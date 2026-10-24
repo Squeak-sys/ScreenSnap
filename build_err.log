@@ -1,0 +1,79 @@
+122 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.9
+141 INFO: Python: 3.13.14
+177 INFO: Platform: Windows-11-10.0.22621-SP0
+182 INFO: Python environment: C:\Program Files\Python313
+193 INFO: Module search paths (PYTHONPATH):
+['E:\\PythonProjects\\Python\\ScreenSnap',
+ 'C:\\Program Files\\Python313\\python313.zip',
+ 'C:\\Program Files\\Python313\\DLLs',
+ 'C:\\Program Files\\Python313\\Lib',
+ 'C:\\Program Files\\Python313',
+ 'C:\\Program Files\\Python313\\Lib\\site-packages',
+ 'E:\\PythonProjects\\Python\\ScreenSnap']
+419 INFO: Appending 'datas' from .spec
+433 INFO: checking Analysis
+449 INFO: Building because excludes changed
+466 INFO: Looking for Python shared library...
+474 INFO: Using Python shared library: C:\Program Files\Python313\python313.dll
+475 INFO: Running Analysis Analysis-00.toc
+475 INFO: Target bytecode optimization level: 0
+476 INFO: Initializing module dependency graph...
+477 INFO: Initializing module graph hook caches...
+486 INFO: Analyzing modules for base_library.zip ...
+1480 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+1788 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+2738 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+3424 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+3741 INFO: Caching module dependency graph...
+3766 INFO: Analyzing E:\PythonProjects\Python\ScreenSnap\main.py
+3776 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+3784 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+4044 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4075 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4079 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4090 INFO: Processing standard module hook 'hook-pystray.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+4364 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+4420 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+4434 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4554 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4836 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4851 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4996 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+5453 INFO: Processing module hooks (post-graph stage)...
+5681 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+5958 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+5966 INFO: Performing binary vs. data reclassification (938 entries)
+6029 INFO: Looking for ctypes DLLs
+6074 INFO: Analyzing run-time hooks ...
+6076 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+6078 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Program Files\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+6097 INFO: Creating base_library.zip...
+6112 INFO: Looking for dynamic libraries
+6222 INFO: Extra DLL search directories (AddDllDirectory): []
+6230 INFO: Extra DLL search directories (PATH): []
+6480 INFO: Warnings written to E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\warn-ScreenSnap.txt
+6496 INFO: Graph cross-reference written to E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\xref-ScreenSnap.html
+6529 INFO: checking PYZ
+6530 INFO: Building because toc changed
+6531 INFO: Building PYZ (ZlibArchive) E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\PYZ-00.pyz
+6757 INFO: Building PYZ (ZlibArchive) E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\PYZ-00.pyz completed successfully.
+6762 INFO: checking PKG
+6763 INFO: Building because E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\PYZ-00.pyz changed
+6763 INFO: Building PKG (CArchive) ScreenSnap.pkg
+6779 INFO: Building PKG (CArchive) ScreenSnap.pkg completed successfully.
+6797 INFO: Bootloader C:\Program Files\Python313\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+6798 INFO: checking EXE
+6798 INFO: Rebuilding EXE-00.toc because pkg is more recent
+6799 INFO: Building EXE from EXE-00.toc
+6799 INFO: Copying bootloader EXE to E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\ScreenSnap.exe
+6802 INFO: Copying icon to EXE
+6804 INFO: Copying 0 resources to EXE
+6804 INFO: Embedding manifest in EXE
+6807 INFO: Appending PKG archive to EXE
+6809 INFO: Fixing EXE headers
+6857 INFO: Building EXE from EXE-00.toc completed successfully.
+6864 INFO: checking COLLECT
+6869 INFO: Removing dir E:\PythonProjects\Python\ScreenSnap\dist\ScreenSnap
+7068 INFO: Building COLLECT COLLECT-00.toc
+7594 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+7616 INFO: Build complete! The results are available in: E:\PythonProjects\Python\ScreenSnap\dist

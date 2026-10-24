@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
-"""存储管理：截图入库、缩略图缓存、3 天回收站。"""
+"""存储管理：截图入库、缩略图缓存、3 天回收站、录屏视频登记。"""
 import json
 import os
+import re
 import shutil
+import subprocess
 import time
 
 GALLERY_JSON = "gallery.json"
 TRASH_DIR = ".trash"
 TRASH_JSON = "trash.json"
 THUMB_SUFFIX = "_thumb"
+RECORD_DIR = "录屏"          # 录屏保存根目录（storage.save_root/录屏/YYYY-MM-DD）
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _now_ts():
@@ -51,6 +55,72 @@ class Storage:
 
     def save_gallery(self, items):
         self._write_json(self.gallery_path, items)
+
+    # ---------- 录屏视频登记 ----------
+    def scan_videos(self):
+        """扫描 save_root/录屏/YYYY-MM-DD/*.mp4，将未登记的视频登记入历史库
+        （kind=video，含 ffmpeg 抽帧缩略图）。返回本次新登记数量。"""
+        gallery = self.load_gallery()
+        known = {it.get("path") for it in gallery}
+        rec_root = os.path.join(self.save_root, RECORD_DIR)
+        if not os.path.isdir(rec_root):
+            return 0
+        new_items = []
+        for day in sorted(os.listdir(rec_root)):
+            day_dir = os.path.join(rec_root, day)
+            if not os.path.isdir(day_dir) or not _DAY_RE.match(day):
+                continue
+            for fn in sorted(os.listdir(day_dir)):
+                if not fn.lower().endswith(".mp4"):
+                    continue
+                p = os.path.join(day_dir, fn)
+                if p in known:
+                    continue
+                thumb = os.path.join(day_dir, os.path.splitext(fn)[0]
+                                     + THUMB_SUFFIX + ".png")
+                self._make_video_thumb(p, thumb)
+                try:
+                    ts = int(os.path.getmtime(p))
+                except Exception:
+                    ts = _now_ts()
+                new_items.append({
+                    "name": fn, "date": day, "path": p,
+                    "thumb": thumb if os.path.exists(thumb) else p,
+                    "ts": ts, "order": 0, "kind": "video",
+                })
+        if not new_items:
+            return 0
+        # 按日期归位：视频条目插入到对应（或更早）日期分组之后，保证日期顺序
+        for it in new_items:
+            pos = len(gallery)
+            for i in range(len(gallery) - 1, -1, -1):
+                if gallery[i].get("date", "") <= it["date"]:
+                    pos = i + 1
+                    break
+            gallery.insert(pos, it)
+        for i, g in enumerate(gallery):
+            g["order"] = i
+        self.save_gallery(gallery)
+        return len(new_items)
+
+    @staticmethod
+    def _make_video_thumb(video_path, thumb_path, max_w=200, max_h=140):
+        """用 ffmpeg 抽取视频首帧生成缩略图（已存在则跳过）。"""
+        if os.path.exists(thumb_path):
+            return thumb_path
+        try:
+            import imageio_ffmpeg
+            exe = imageio_ffmpeg.get_ffmpeg_exe()
+            os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+            cmd = [exe, "-y", "-ss", "0.1", "-i", video_path,
+                   "-frames:v", "1",
+                   "-vf", f"scale={max_w}:{max_h}:force_original_aspect_ratio=decrease",
+                   "-q:v", "3", thumb_path]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=30)
+        except Exception:
+            pass
+        return thumb_path if os.path.exists(thumb_path) else None
 
     # ---------- 截图入库 ----------
     def save_image(self, img, ts=None, fmt="png"):

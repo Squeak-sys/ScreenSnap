@@ -134,6 +134,8 @@ class StickerWindow:
         self.win.geometry(f"{img.width}x{img.height}+{nx}+{ny}")
 
     def _on_wheel(self, event):
+        if self._thumb_mode:
+            return  # 缩略图状态下禁用滚轮缩放
         k = 1.12 if event.delta > 0 else 1 / 1.12
         self._zoom(k, event.x, event.y)
 

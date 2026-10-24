@@ -157,6 +157,7 @@ class ScreenSnapApp:
             EditorWindow(self.root, img, on_done=self._on_done,
                          on_cancel=self._on_cancel_capture,
                          on_pin=self._on_pin,
+                         on_record=self.start_record,
                          offset_x=offset_x, offset_y=offset_y,
                          full_image=full_image, sel_box=sel_box)
         except Exception as e:
@@ -165,9 +166,10 @@ class ScreenSnapApp:
 
     def _on_done(self, img, x=0, y=0):
         self._busy = False
-        # 1) 复制到剪贴板
-        from clipboard import copy_image_to_clipboard
-        copy_image_to_clipboard(img)
+        # 1) 复制到剪贴板（按设置：截图后自动复制）
+        if self.config.get("auto_copy", True):
+            from clipboard import copy_image_to_clipboard
+            copy_image_to_clipboard(img)
         # 2) 保存到历史库（按当前设置格式）
         fmt = self.config.get("save_format", "png")
         img = img.convert("RGB")
@@ -187,6 +189,28 @@ class ScreenSnapApp:
             StickerWindow(self.root, img, x, y)
         except Exception:
             pass
+
+    # ---------- 录制流程 ----------
+    def start_record(self, rect=None):
+        """工具栏「录制」入口：rect 为截图选区时跳过框选直接录制，否则走区域选择流程。"""
+        self._log("start_record triggered")
+        if hasattr(self, "_busy") and self._busy:
+            return
+        self._busy = True
+        try:
+            from recorder import start_record as _start_record
+            _start_record(self.root, self.storage, rect=rect,
+                          on_finish=self._on_record_finished)
+        except Exception as e:
+            self._busy = False
+            self._notify(f"启动录制失败：{e}")
+
+    def _on_record_finished(self, path):
+        self._busy = False
+        if path:
+            from tkinter import messagebox
+            self.root.after(0, lambda: messagebox.showinfo(
+                "ScreenSnap", f"录制完成，已保存：\n{path}"))
 
     # ---------- 窗口 ----------
     def _log(self, msg):

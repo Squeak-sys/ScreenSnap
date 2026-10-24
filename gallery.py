@@ -70,6 +70,11 @@ class GalleryWindow:
         self.group_h = 40
 
         self.storage.cleanup_trash()
+        # 先把录屏视频登记进历史库（含 ffmpeg 抽帧缩略图），再统一加载
+        try:
+            self.storage.scan_videos()
+        except Exception:
+            pass
         self.items = self.storage.load_gallery()
         self.items.sort(key=lambda it: it.get("order", 0))
 
@@ -84,7 +89,9 @@ class GalleryWindow:
                "按住图片拖动=调整顺序  |  Delete=删除(3天回收站)  |  双击=查看大图")
         tk.Label(top, text=tip, bg="#1f1f1f", fg="#cccccc",
                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=12, pady=8)
-        self.status_var = tk.StringVar(value=f"共 {len(self.items)} 张截图")
+        n_video = sum(1 for it in self.items if it.get("kind") == "video")
+        self.status_var = tk.StringVar(
+            value=f"共 {len(self.items)} 项（截图 {len(self.items) - n_video} · 录屏 {n_video}）")
         tk.Label(top, textvariable=self.status_var, bg="#1f1f1f", fg="#ffb800",
                  font=("Microsoft YaHei UI", 9)).pack(side="right", padx=12)
 
@@ -137,7 +144,8 @@ class GalleryWindow:
 
     # ---------- 布局（虚拟） ----------
     def _get_thumb_im(self, item):
-        """取基础缩略图（THUMB_WxTHUMB_H 的 PIL Image），渲染时按 _scale 二次采样。"""
+        """取基础缩略图（THUMB_WxTHUMB_H 的 PIL Image），渲染时按 _scale 二次采样。
+        录屏视频条目叠加播放按钮标记（右下角深色圆底 + 白色三角）。"""
         p = item.get("thumb")
         if p not in self._thumb_imgs:
             try:
@@ -150,6 +158,15 @@ class GalleryWindow:
                     im = Image.open(tp).resize((THUMB_W, THUMB_H), 3)
                 except Exception:
                     im = Image.new("RGB", (THUMB_W, THUMB_H), (60, 60, 60))
+            if item.get("kind") == "video":
+                d = ImageDraw.Draw(im)
+                cx, cy = THUMB_W - 28, THUMB_H - 28
+                r = 15
+                d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(26, 26, 26))
+                d.ellipse([cx - r + 2, cy - r + 2, cx + r - 2, cy + r - 2],
+                          outline=(255, 255, 255), width=2)
+                d.polygon([(cx - 5, cy - 8), (cx - 5, cy + 8), (cx + 9, cy)],
+                          fill=(255, 255, 255))
             self._thumb_imgs[p] = im
         return self._thumb_imgs[p]
 
@@ -530,9 +547,10 @@ class GalleryWindow:
 
     def _update_status(self):
         sel = len(self.selected)
-        txt = f"共 {len(self.items)} 张截图"
+        n_video = sum(1 for it in self.items if it.get("kind") == "video")
+        txt = f"共 {len(self.items)} 项（截图 {len(self.items) - n_video} · 录屏 {n_video}）"
         if sel:
-            txt += f"  |  已选 {sel} 张"
+            txt += f"  |  已选 {sel} 项"
         self.status_var.set(txt)
 
     # ---------- 布局入口 ----------
@@ -553,10 +571,17 @@ class GalleryWindow:
         if not path or not os.path.exists(path):
             messagebox.showwarning("ScreenSnap", "文件不存在，可能已被清理。")
             return
+        if item.get("kind") == "video":
+            # 录屏视频：打开视频播放窗口并自动开始播放
+            vw = _VideoViewer(self.win, path,
+                              on_close=lambda: self._after_view_close(item))
+            vw.win.update_idletasks()
+            GalleryWindow._place_on_pointer(vw.win, vw.win.winfo_width(),
+                                            vw.win.winfo_height())
+            return vw
         img = Image.open(path).convert("RGB")
         vw = _LargeViewer(
             self.win, img,
-            ocr_enabled=self.cfg.get("ocr_enabled", False),
             storage=self.storage,
             save_fmt=self.cfg.get("save_format", "png"),
             on_delete=lambda: self._delete_one(item, None),
@@ -567,6 +592,13 @@ class GalleryWindow:
         GalleryWindow._place_on_pointer(vw.win, vw.win.winfo_width(),
                                         vw.win.winfo_height())
         return vw
+
+    def _after_view_close(self, item):
+        """视频播放窗口关闭后：若视频已被删除则刷新画布。"""
+        if not os.path.exists(item.get("path", "")):
+            self.items = self.storage.load_gallery()
+            self.items.sort(key=lambda it: it.get("order", 0))
+            self._layout(keep_view=True)
 
     def _reload_after_save(self):
         """保存到历史库后刷新画布：新增条目立即可见。"""
@@ -582,27 +614,6 @@ class GalleryWindow:
             messagebox.showinfo("ScreenSnap", "已复制到剪贴板" if ok else "复制失败")
         except Exception as e:
             messagebox.showerror("ScreenSnap", f"复制失败：{e}")
-
-    def _ocr_copy(self, item):
-        try:
-            import ocr as ocr_mod
-            if not ocr_mod.is_available():
-                messagebox.showwarning(
-                    "ScreenSnap",
-                    "未检测到 Tesseract OCR 引擎。请先安装：\n"
-                    "https://github.com/UB-Mannheim/tesseract/wiki\n"
-                    "并安装中文语言包 chi_sim。")
-                return
-            img = Image.open(item["path"])
-            text = ocr_mod.ocr_text(img)
-            if text.strip():
-                self.win.clipboard_clear()
-                self.win.clipboard_append(text.strip())
-                messagebox.showinfo("ScreenSnap", "识别文字已复制到剪贴板")
-            else:
-                messagebox.showinfo("ScreenSnap", "未识别到文字")
-        except Exception as e:
-            messagebox.showerror("ScreenSnap", f"OCR 失败：{e}")
 
     def _save_as(self, img):
         p = filedialog.asksaveasfilename(
@@ -630,18 +641,136 @@ class GalleryWindow:
                     pass
 
 
-class _LargeViewer(editor.EditorWindow):
-    """历史库大图查看+标注窗口：复用 editor.py 的七种标注工具与悬浮工具栏 UI
-    （浅灰圆角条带、统一按钮样式），标注以 PIL 内存图绘制（不改动原图文件）；
-    支持滚轮锚点缩放（100%~200%）、空白拖动平移画布、OCR 文字识别复制（复用 ocr.py）。"""
+class _EmbeddedToolbar(tk.Frame):
+    """大图查看器内嵌工具栏：直接嵌入 _LargeViewer 主窗口底部的 Frame 子控件，
+    与大图窗口同窗口同图层（无独立 Toplevel），天然跟随窗口移动、随窗口销毁，
+    彻底消除独立窗口带来的置顶/浮动/跟随/残留问题。
+    提供与 editor.ToolbarWindow 一致的接口（_highlight_tool / set_color / set_width），
+    保证 _LargeViewer 复用 EditorWindow 继承来的样式方法（set_color/set_width/undo）可用。"""
 
-    def __init__(self, root, image, on_close=None, ocr_enabled=False,
-                 on_ocr=None, on_delete=None, storage=None, save_fmt="png",
-                 on_saved=None):
+    def __init__(self, master, ed, bg="#f0f0f0"):
+        super().__init__(master, bg=bg)
+        self.editor = ed
+        self._tool_btns = {}
+        self._normal_bg = {}
+
+        def _mk_btn(parent, **kw):
+            kw.setdefault("relief", "flat")
+            kw.setdefault("bd", 0)
+            kw.setdefault("cursor", "hand2")
+            kw.setdefault("bg", "#f7f7f7")
+            kw.setdefault("activebackground", "#e8e8e8")
+            kw.setdefault("highlightthickness", 1)
+            kw.setdefault("highlightbackground", "#f7f7f7")
+            kw.setdefault("highlightcolor", "#f7f7f7")
+            kw.setdefault("font", ("Microsoft YaHei UI", 9))
+            return tk.Button(parent, **kw)
+
+        # 第一行：标注工具（7 个）+ 颜色 + 线宽 + 撤销
+        row1 = tk.Frame(self, bg=bg)
+        row1.pack(side="top", fill="x", padx=6, pady=(4, 1))
+
+        self._icons = editor._make_tool_icons()
+        for tool in editor.TOOLS:
+            b = _mk_btn(row1, image=self._icons[tool],
+                        command=lambda t=tool: self.editor.set_tool(t))
+            b.pack(side="left", padx=2)
+            self._tool_btns[tool] = b
+            self._normal_bg[b] = "#f7f7f7"
+
+        # 颜色：色块按钮 + 下拉菜单（Menu 弹出，不创建独立窗口）
+        self._color_btn = _mk_btn(row1, text="", bg="#e62117",
+                                  activebackground="#e62117",
+                                  command=self._open_color_menu)
+        self._color_btn.pack(side="left", padx=(6, 2))
+        self._normal_bg[self._color_btn] = "#e62117"
+
+        # 线宽：下拉菜单
+        self._width_btn = _mk_btn(row1, text="线宽·中", fg="#333333",
+                                  command=self._open_width_menu)
+        self._width_btn.pack(side="left", padx=2)
+        self._normal_bg[self._width_btn] = "#f7f7f7"
+
+        undo_b = _mk_btn(row1, text="撤销", fg="#333333",
+                         command=self.editor.undo)
+        undo_b.pack(side="left", padx=2)
+        self._normal_bg[undo_b] = "#f7f7f7"
+
+        # 第二行：常用操作（复制/另存/保存/删除/盯住/关闭）
+        row2 = tk.Frame(self, bg=bg)
+        row2.pack(side="bottom", fill="x", padx=6, pady=(0, 4))
+
+        for text, cmd in (("复制图片", self.editor._copy_img),
+                          ("另存为...", self.editor._save_as),
+                          ("保存到历史库", self.editor._save_to_gallery),
+                          ("删除(回收站)", self.editor._delete_btn),
+                          ("盯住", self.editor.pin),
+                          ("关闭", self.editor.done)):
+            b = _mk_btn(row2, text=text, fg="#333333", command=cmd)
+            b.pack(side="left", padx=2)
+
+    def _open_color_menu(self):
+        menu = tk.Menu(self, tearoff=0)
+        for name, rgb in editor.COLORS.items():
+            hexc = "#{:02x}{:02x}{:02x}".format(*rgb)
+            menu.add_command(label=name,
+                             command=lambda c=rgb: self.editor.set_color(c))
+        try:
+            menu.tk_popup(self._color_btn.winfo_rootx(),
+                          self._color_btn.winfo_rooty() + self._color_btn.winfo_height())
+        finally:
+            menu.grab_release()
+
+    def _open_width_menu(self):
+        menu = tk.Menu(self, tearoff=0)
+        for name, w in editor.WIDTHS.items():
+            menu.add_command(label=f"{name}（{w}px）",
+                             command=lambda v=w, n=name: self.editor.set_width(v, n))
+        try:
+            menu.tk_popup(self._width_btn.winfo_rootx(),
+                          self._width_btn.winfo_rooty() + self._width_btn.winfo_height())
+        finally:
+            menu.grab_release()
+
+    def _highlight_tool(self):
+        """当前工具高亮（None 表示浏览/平移模式，无高亮）。"""
+        cur = self.editor.tool
+        for t, b in self._tool_btns.items():
+            if t == cur:
+                b.configure(bg="#d7e3f4", activebackground="#c4d6ef",
+                            highlightbackground="#c4d6ef",
+                            highlightcolor="#c4d6ef")
+            else:
+                b.configure(bg="#f7f7f7", activebackground="#e8e8e8",
+                            highlightbackground="#f7f7f7",
+                            highlightcolor="#f7f7f7")
+
+    def set_color(self, rgb):
+        hexc = "#{:02x}{:02x}{:02x}".format(*rgb)
+        self._color_btn.configure(bg=hexc, activebackground=hexc,
+                                  highlightbackground="#ffb800",
+                                  highlightcolor="#ffb800")
+
+    def set_width(self, w, name=None):
+        if name is None:
+            name = next((n for n, v in editor.WIDTHS.items() if v == w), str(w))
+        self._width_btn.configure(text=f"线宽·{name}")
+
+
+class _LargeViewer(editor.EditorWindow):
+    """历史库大图查看+标注窗口：复用 editor.py 的七种标注工具；工具栏为内嵌
+    Frame 子控件（与大图窗口同窗口同图层，无独立窗口，彻底消除置顶/浮动/残留），
+    标注以 PIL 内存图绘制（不改动原图文件）；
+    支持滚轮锚点缩放（20%~200%）、空白拖动平移画布；超大图片打开时按 50% 显示。"""
+
+    # 打开尺寸规则：图片宽或高超过该阈值（px）时，打开按实际尺寸的 50% 显示
+    OPEN_HALF_THRESHOLD = 1000
+
+    def __init__(self, root, image, on_close=None, on_delete=None,
+                 storage=None, save_fmt="png", on_saved=None):
         # 直接初始化标注状态（字段与 EditorWindow 对齐，走 MODE_DRAW 标注模式）
         self.root = root
         self.on_close = on_close
-        self.on_ocr = on_ocr
         self.on_delete = on_delete
         self.storage = storage
         self.save_fmt = save_fmt
@@ -665,8 +794,10 @@ class _LargeViewer(editor.EditorWindow):
         self.h = self.img.height
         self.tool_h = 32
 
-        # 真无限画布缩放/平移状态（100%~200%）
-        self._scale = 1.0
+        # 真无限画布缩放/平移状态（20%~200%）
+        # 打开尺寸规则：宽或高超过 OPEN_HALF_THRESHOLD 时按 50% 显示
+        self._scale = 0.5 if (self.w > _LargeViewer.OPEN_HALF_THRESHOLD
+                              or self.h > _LargeViewer.OPEN_HALF_THRESHOLD) else 1.0
         self._origin_x = 0.0
         self._origin_y = 0.0
         self._photo = None
@@ -676,7 +807,10 @@ class _LargeViewer(editor.EditorWindow):
 
         self.win = tk.Toplevel(root)
         self.win.title("ScreenSnap - 大图查看与标注")
-        self.win.geometry(f"{min(self.w, 1000) + 16}x{min(self.h, 700) + 72}")
+        dw = max(1, int(self.w * self._scale))
+        dh = max(1, int(self.h * self._scale))
+        # 底部为两行内嵌工具栏，窗口高度相应增加
+        self.win.geometry(f"{dw + 16}x{dh + 96}")
         self.win.minsize(480, 320)
         try:
             self.win.transient(root)
@@ -689,30 +823,11 @@ class _LargeViewer(editor.EditorWindow):
                                 cursor="fleur")
         self.canvas.pack(fill="both", expand=True)
 
-        bar = tk.Frame(self.win, bg="#f0f0f0")
-        bar.pack(fill="x", side="bottom")
-        # 按钮行整体水平居中（pack 默认 anchor=center，窗口宽度变化自动重新居中）
-        row = tk.Frame(bar, bg="#f0f0f0")
-        row.pack(pady=3)
-        tk.Button(row, text="复制图片", command=self._copy_img,
-                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=3)
-        if ocr_enabled:
-            tk.Button(row, text="复制图中文字(OCR)", command=self._ocr_btn,
-                      font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=3)
-        tk.Button(row, text="另存为...", command=self._save_as,
-                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=3)
-        tk.Button(row, text="保存到历史库", command=self._save_to_gallery,
-                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=3)
-        tk.Button(row, text="删除(回收站)", command=self._delete_btn,
-                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=3)
-        tk.Button(row, text="关闭", command=self.done,
-                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=3)
-
-        # 悬浮工具栏（复用 editor.ToolbarWindow）
-        self.toolbar = editor.ToolbarWindow(self, root)
+        # 内嵌工具栏：直接作为大图窗口底部 Frame 子控件（同窗口同图层），
+        # 天然跟随窗口移动、随窗口销毁，无独立 Toplevel 的置顶/浮动/残留问题
+        self.toolbar = _EmbeddedToolbar(self.win, self)
+        self.toolbar.pack(fill="x", side="bottom")
         self._center_view()
-        self._position_toolbar()
-        self.win.bind("<Configure>", lambda e: self._position_toolbar())
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
@@ -732,7 +847,7 @@ class _LargeViewer(editor.EditorWindow):
         self.toolbar._highlight_tool()
         self._refresh_display()
 
-    # ---------- 视图：居中 / 平移 / 缩放（100%~200% 锚点缩放） ----------
+    # ---------- 视图：居中 / 平移 / 缩放（20%~200% 锚点缩放） ----------
     def _center_view(self):
         """初始视图：图片小于画布时居中，大于画布时左上角对齐（可拖动查看）。"""
         self.win.update_idletasks()
@@ -744,10 +859,10 @@ class _LargeViewer(editor.EditorWindow):
         self._origin_y = max(0.0, (ch - dh) / 2)
 
     def _on_wheel_large(self, event):
-        """滚轮缩放：以鼠标为锚点，范围 100%~200%（复用真无限画布锚点公式）。"""
+        """滚轮缩放：以鼠标为锚点，范围 20%~200%（复用真无限画布锚点公式）。"""
         old = self._scale
         k = 1.1 if event.delta > 0 else 1 / 1.1
-        new = max(1.0, min(2.0, old * k))
+        new = max(0.2, min(2.0, old * k))
         if abs(new - old) < 1e-9:
             return
         cx, cy = event.x, event.y
@@ -1003,7 +1118,7 @@ class _LargeViewer(editor.EditorWindow):
         self._origin_x = max(0.0, (cw - dw) / 2)
         self._origin_y = max(0.0, (ch - dh) / 2)
         self._refresh_display()
-        self._position_toolbar()
+        # 内嵌工具栏为窗口子控件，随窗口布局自动贴底，无需手动排布
 
     def _save_to_gallery(self):
         """保存：标注合成图存为新文件并自动加入历史库，成功后刷新历史库画布。
@@ -1027,42 +1142,6 @@ class _LargeViewer(editor.EditorWindow):
             messagebox.showerror("ScreenSnap", f"保存失败：{e}")
             return False
 
-    # ---------- 工具栏排布 ----------
-    def _position_toolbar(self):
-        """悬浮工具栏排布：相对大图窗口水平居中，优先窗口底部外侧；
-        下方无空间则放窗口上方，并 clamp 到屏幕范围内。
-        使用 winfo_rootx/rooty 真实屏幕坐标（winfo_x/y 是相对父窗口，
-        父窗口隐藏时会导致工具栏错位盖住窗口底部按钮）。"""
-        try:
-            self.win.update_idletasks()
-            bar_w = self.toolbar.bar_w
-            win_x = self.win.winfo_rootx()
-            win_y = self.win.winfo_rooty()
-            win_w = self.win.winfo_width()
-            win_h = self.win.winfo_height()
-            # 用大图窗口所在屏幕做 clamp（多显示器下主屏范围无效，
-            # 否则副屏打开时工具栏会被拉回主屏，造成与窗口不居中）
-            mon = None
-            cx = win_x + win_w // 2
-            cy = win_y + win_h // 2
-            for l, t, r, b in GalleryWindow._monitor_rects():
-                if l <= cx < r and t <= cy < b:
-                    mon = (l, t, r, b)
-                    break
-            if mon is None:
-                mon = (0, 0, self.win.winfo_screenwidth(),
-                       self.win.winfo_screenheight())
-            ml, mt, mr, mb = mon
-            x = win_x + max(0, (win_w - bar_w) // 2)
-            y = win_y + win_h + 2
-            if y + self.tool_h > mb:
-                y = max(mt, win_y - self.tool_h - 2)
-            x = max(ml, min(x, mr - bar_w))
-            y = max(mt, min(y, mb - self.tool_h))
-        except Exception:
-            return
-        self.toolbar.win.geometry(f"{bar_w}x{self.tool_h}+{x}+{y}")
-
     # ---------- 完成 / 取消 / 盯住（大图场景均=关闭窗口，标注不落盘） ----------
     def done(self):
         """确认/完成：与「保存到历史库」相同——合成标注并保存为历史库新条目，
@@ -1074,11 +1153,30 @@ class _LargeViewer(editor.EditorWindow):
         self._close()
 
     def pin(self):
+        """盯住：与截图后盯住行为一致——合成标注图保存到历史库，
+        并作为贴图（StickerWindow）钉在屏幕上（位置取大图窗口当前位置）。"""
+        try:
+            self._finish_text_entry()
+            self._flatten_texts()
+            if self.storage is not None:
+                self.storage.save_image(self.img.convert("RGB"), None,
+                                        self.save_fmt)
+        except Exception:
+            pass
+        try:
+            from sticker import StickerWindow
+            StickerWindow(self.root, self.img.convert("RGB"),
+                          self.win.winfo_x(), self.win.winfo_y())
+        except Exception:
+            pass
         self._close()
 
     def _close(self):
-        self._finish_text_entry()
-        self.toolbar.destroy()
+        try:
+            self._finish_text_entry()
+        except Exception:
+            pass
+        # 内嵌工具栏是窗口子控件，随 win.destroy() 一并销毁，无残留
         try:
             self.win.destroy()
         except Exception:
@@ -1110,27 +1208,6 @@ class _LargeViewer(editor.EditorWindow):
             except Exception as e:
                 messagebox.showerror("ScreenSnap", f"保存失败：{e}")
 
-    def _ocr_btn(self):
-        """OCR 文字识别并复制到剪贴板（复用 ocr.py）。"""
-        try:
-            import ocr as ocr_mod
-            if not ocr_mod.is_available():
-                messagebox.showwarning(
-                    "ScreenSnap",
-                    "未检测到 Tesseract OCR 引擎。请先安装：\n"
-                    "https://github.com/UB-Mannheim/tesseract/wiki\n"
-                    "并安装中文语言包 chi_sim。")
-                return
-            text = ocr_mod.ocr_text(self.img)
-            if text.strip():
-                self.root.clipboard_clear()
-                self.root.clipboard_append(text.strip())
-                messagebox.showinfo("ScreenSnap", "识别文字已复制到剪贴板")
-            else:
-                messagebox.showinfo("ScreenSnap", "未识别到文字")
-        except Exception as e:
-            messagebox.showerror("ScreenSnap", f"OCR 失败：{e}")
-
     def _delete_btn(self):
         if self.on_delete:
             try:
@@ -1138,3 +1215,171 @@ class _LargeViewer(editor.EditorWindow):
             except Exception:
                 pass
         self._close()
+
+
+class _VideoViewer:
+    """历史库录屏视频播放窗口：双击视频条目自动打开并开始播放。
+    使用 imageio_ffmpeg.read_frames 逐帧解码（rgb24 bytes -> PIL），
+    画布显示 + 暂停/继续 + 重新播放 + 关闭。"""
+
+    def __init__(self, root, path, on_close=None):
+        self.root = root
+        self.path = path
+        self.on_close = on_close
+        self._gen = None
+        self._vw = 320
+        self._vh = 180
+        self._fps = 15.0
+        self._playing = False
+        self._stopped = False
+        self._frame_idx = 0
+        self._total = 0
+        self._photo = None
+
+        try:
+            import imageio_ffmpeg
+            self._gen = imageio_ffmpeg.read_frames(path, pix_fmt="rgb24")
+            meta = next(self._gen)  # 首项为 meta dict
+            self._vw = int(meta.get("size", (320, 180))[0])
+            self._vh = int(meta.get("size", (320, 180))[1])
+            self._fps = float(meta.get("fps", 15.0) or 15.0)
+        except Exception:
+            self._gen = None
+        try:
+            import imageio_ffmpeg as _f
+            n, _ = _f.count_frames_and_secs(path)
+            self._total = int(n or 0)
+        except Exception:
+            self._total = 0
+
+        # 显示尺寸：视频不超过屏幕 90%
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        self._disp_scale = min(1.0, (sw * 0.9) / max(1, self._vw),
+                               (sh * 0.9) / max(1, self._vh))
+        dw = max(1, int(self._vw * self._disp_scale))
+        dh = max(1, int(self._vh * self._disp_scale))
+
+        self.win = tk.Toplevel(root)
+        self.win.title(os.path.basename(path))
+        self.win.geometry(f"{dw + 16}x{dh + 96}")
+        self.win.minsize(360, 220)
+        try:
+            self.win.transient(root)
+        except Exception:
+            pass
+        self.win.protocol("WM_DELETE_WINDOW", self._close)
+
+        top = tk.Frame(self.win, bg="#1f1f1f")
+        top.pack(fill="x")
+        tk.Label(top, text=os.path.basename(path), bg="#1f1f1f", fg="#ffb800",
+                 font=("Microsoft YaHei UI", 9)).pack(side="left", padx=10, pady=6)
+        self.info_var = tk.StringVar(value="")
+        tk.Label(top, textvariable=self.info_var, bg="#1f1f1f", fg="#cccccc",
+                 font=("Microsoft YaHei UI", 9)).pack(side="right", padx=10)
+
+        self.canvas = tk.Canvas(self.win, bg="#000000",
+                                highlightthickness=0, width=dw, height=dh)
+        self.canvas.pack(fill="both", expand=True)
+
+        bar = tk.Frame(self.win, bg="#2a2a2a")
+        bar.pack(fill="x")
+        self._btn_play = tk.Button(bar, text="暂停", command=self._toggle_play,
+                                   font=("Microsoft YaHei UI", 9), width=6)
+        self._btn_play.pack(side="left", padx=8, pady=5)
+        tk.Button(bar, text="重新播放", command=self._restart,
+                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=5)
+        tk.Button(bar, text="关闭", command=self._close,
+                  font=("Microsoft YaHei UI", 9)).pack(side="right", padx=8, pady=5)
+
+        if self._gen is None:
+            self.info_var.set("无法解码视频")
+            return
+        # 打开即自动开始播放
+        self._playing = True
+        self.win.after(50, self._step)
+
+    # ---------- 播放 ----------
+    def _step(self):
+        if self._stopped:
+            return
+        if not self._playing:
+            self.win.after(int(1000 / max(1.0, self._fps)), self._step)
+            return
+        try:
+            data = next(self._gen)
+        except StopIteration:
+            self._playing = False
+            self._btn_play.configure(text="播放")
+            self.info_var.set(f"播放完成" + (f" · {self._total} 帧" if self._total else ""))
+            return
+        except Exception:
+            self._playing = False
+            self.info_var.set("解码中断")
+            return
+        try:
+            img = Image.frombytes("RGB", (self._vw, self._vh), data)
+            if self._disp_scale < 0.999:
+                img = img.resize((max(1, int(img.width * self._disp_scale)),
+                                  max(1, int(img.height * self._disp_scale))), 2)
+            self._photo = ImageTk.PhotoImage(img)
+            self.canvas.delete("all")
+            self.canvas.create_image(0, 0, image=self._photo, anchor="nw")
+            self._frame_idx += 1
+            if self._total:
+                self.info_var.set(f"{self._frame_idx} / {self._total} 帧")
+        except Exception:
+            self._playing = False
+            self.info_var.set("显示失败")
+            return
+        self.win.after(int(1000 / max(1.0, self._fps)), self._step)
+
+    def _toggle_play(self):
+        if self._stopped:
+            return
+        if self._playing:
+            self._playing = False
+            self._btn_play.configure(text="播放")
+        else:
+            if self._gen is None:
+                return
+            self._playing = True
+            self._btn_play.configure(text="暂停")
+            self.win.after(int(1000 / max(1.0, self._fps)), self._step)
+
+    def _restart(self):
+        try:
+            if self._gen is not None:
+                self._gen.close()
+        except Exception:
+            pass
+        self._gen = None
+        try:
+            import imageio_ffmpeg
+            self._gen = imageio_ffmpeg.read_frames(self.path, pix_fmt="rgb24")
+            next(self._gen)
+        except Exception:
+            self._gen = None
+            self.info_var.set("无法重新解码")
+            return
+        self._frame_idx = 0
+        self._playing = True
+        self._btn_play.configure(text="暂停")
+        self.win.after(50, self._step)
+
+    def _close(self):
+        self._stopped = True
+        try:
+            if self._gen is not None:
+                self._gen.close()
+        except Exception:
+            pass
+        try:
+            self.win.destroy()
+        except Exception:
+            pass
+        if self.on_close:
+            try:
+                self.on_close()
+            except Exception:
+                pass

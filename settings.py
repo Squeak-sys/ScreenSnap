@@ -1,27 +1,268 @@
 # -*- coding: utf-8 -*-
-"""设置页：快捷键自定义(冲突检测)、保存格式、OCR、开机自启、回收站管理。"""
+"""设置页（SHUTTER 设计语言）：左侧分区导航 + 右侧行式表单。
+字段对应 config.json 现有字段：hotkey / save_format / save_root /
+auto_start / auto_copy / trash_days / column_capacity，无新增概念。"""
 import os
 import ctypes
 from ctypes import wintypes
 import tkinter as tk
 from tkinter import messagebox
 
-# ---- UI 风格常量（对齐 editor.py ToolbarWindow：浅灰圆角条带 / 深灰文字）----
-UI_BG = "#f7f7f7"          # 浅灰条带主体
-UI_BG_DEEP = "#e8e8e8"     # 悬停/次级
-UI_FG = "#333333"          # 深灰主文字
-UI_FG_DIM = "#888888"      # 辅助文字
-UI_BORDER = "#e3e3e3"      # 条带描边
-UI_SELECT = "#d7e3f4"      # 选中态（editor 工具高亮）
-UI_ACCEPT = "#07c160"      # 绿色确认✓
-UI_ACCEPT_D = "#06ad56"    # 绿色悬停
-UI_CANCEL = "#e5484d"      # 红色取消✕
-UI_CANCEL_D = "#d93b40"    # 红色悬停
-UI_FONT = ("Microsoft YaHei UI", 9)
-UI_FONT_SM = ("Microsoft YaHei UI", 8)
+import ui_theme as T
+
+
+class Switch(tk.Canvas):
+    """40×22 圆角开关：选中主色 + 滑块 after(16ms) 插值动画。"""
+
+    def __init__(self, master, value=False, command=None):
+        tk.Canvas.__init__(self, master, width=40, height=22,
+                           bg=T.SURFACE, highlightthickness=0, bd=0,
+                           cursor="hand2")
+        self._on = bool(value)
+        self._pos = 20 if self._on else 2
+        self._command = command
+        self._draw(self._pos)
+        self.bind("<Button-1>", self._toggle)
+
+    @staticmethod
+    def _rr(cv, x1, y1, x2, y2, r, **kw):
+        pts = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
+               x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
+        return cv.create_polygon(pts, smooth=True, **kw)
+
+    def _draw(self, pos):
+        self.delete("all")
+        bg = T.ACCENT if self._on else "#CFD4DA"
+        self._rr(self, 0, 0, 40, 22, 11, fill=bg, outline="")
+        self.create_oval(pos, 2, pos + 18, 20, fill="#ffffff", outline="",
+                         tags="slider")
+
+    def _toggle(self, _e=None):
+        self._on = not self._on
+        self._anim_to(20 if self._on else 2)
+        if self._command:
+            self._command(self._on)
+
+    def _anim_to(self, target):
+        def _tick(cur):
+            if cur == target:
+                self._pos = cur
+                return
+            step = 3 if target > cur else -3
+            nxt = cur + step
+            if (nxt - target) * step > 0:
+                nxt = target
+            self._draw(nxt)
+            self.after(16, _tick, nxt)
+        _tick(self._pos)
+
+
+class Seg(tk.Frame):
+    """分段选择器：surface-2 底 + 白底选中项 + 阴影（对齐原型 .seg）。"""
+
+    def __init__(self, master, options, value, command=None):
+        tk.Frame.__init__(self, master, bg=T.SURFACE_2, bd=0,
+                          highlightthickness=1, highlightbackground=T.LINE)
+        self._choices = list(options)
+        self._value = value
+        self._command = command
+        self._btns = {}
+        for i, (text, val) in enumerate(self._choices):
+            b = tk.Button(
+                self, text=text, relief="flat", bd=0, cursor="hand2",
+                padx=16, pady=4,
+                font=("Microsoft YaHei UI", 11,
+                      "bold" if val == value else "normal"),
+                bg=T.SURFACE if val == value else T.SURFACE_2,
+                fg=T.INK if val == value else T.INK_2,
+                activebackground=T.SURFACE_3, activeforeground=T.INK,
+                command=lambda v=val: self._select(v))
+            b.grid(row=0, column=i, padx=1, pady=1)
+            self._btns[val] = b
+
+    def value(self):
+        return self._value
+
+    def _select(self, v):
+        if v == self._value:
+            return
+        self._value = v
+        for val, b in self._btns.items():
+            on = val == v
+            b.configure(bg=T.SURFACE if on else T.SURFACE_2,
+                        fg=T.INK if on else T.INK_2,
+                        font=("Microsoft YaHei UI", 11,
+                              "bold" if on else "normal"))
+        if self._command:
+            self._command(v)
+
+
+class Stepper(tk.Frame):
+    """回收站天数步进器：− value +（对齐原型 .stepper）。"""
+
+    def __init__(self, master, value, command=None, lo=0, hi=30,
+                 suffix=" 天"):
+        tk.Frame.__init__(self, master, bg=T.SURFACE, bd=0,
+                          highlightthickness=1, highlightbackground=T.LINE)
+        self._lo, self._hi = lo, hi
+        self._value = int(value)
+        self._suffix = suffix
+        self._command = command
+        self._minus = self._mk_btn("−", self._dec)
+        self._minus.grid(row=0, column=0)
+        self._val_lbl = tk.Label(self, width=5, text=f"{self._value}{suffix}",
+                                 bg=T.SURFACE, fg=T.INK,
+                                 font=("Microsoft YaHei UI", 11, "bold"))
+        self._val_lbl.grid(row=0, column=1)
+        self._plus = self._mk_btn("+", self._inc)
+        self._plus.grid(row=0, column=2)
+
+    def _mk_btn(self, text, cmd):
+        return tk.Button(self, text=text, command=cmd, relief="flat", bd=0,
+                         width=3, bg=T.SURFACE, fg=T.INK_2,
+                         activebackground=T.SURFACE_3, activeforeground=T.INK,
+                         font=("Microsoft YaHei UI", 12), cursor="hand2")
+
+    def _dec(self):
+        self.set(self._value - 1)
+
+    def _inc(self):
+        self.set(self._value + 1)
+
+    def set(self, v):
+        v = max(self._lo, min(self._hi, v))
+        if v == self._value:
+            return
+        self._value = v
+        self._val_lbl.configure(text=f"{v}{self._suffix}")
+        if self._command:
+            self._command(v)
+
+    def value(self):
+        return self._value
+
+
+class HotkeyBox(tk.Frame):
+    """热键录制框：点击进入监听态（蓝框 + 闪烁占位），Esc 取消。"""
+
+    def __init__(self, master, value, on_record=None):
+        tk.Frame.__init__(self, master, bg=T.SURFACE_2, bd=0,
+                          highlightthickness=1, highlightbackground=T.LINE,
+                          cursor="hand2", padx=8, pady=4)
+        self._value = value
+        self._on_record = on_record
+        self._recording = False
+        self._mods = set()
+        self._blink_job = None
+        self._render()
+        self.bind("<Button-1>", self._start, add="+")
+        for c in self.winfo_children():
+            c.bind("<Button-1>", self._start, add="+")
+
+    def _render(self):
+        for w in self.winfo_children():
+            w.destroy()
+        parts = [p for p in self._value.split("+") if p]
+        for i, p in enumerate(parts):
+            if i:
+                tk.Label(self, text="+", fg=T.INK_3, bg=self["bg"]).pack(
+                    side="left", padx=1)
+            tk.Label(self, text=p, fg=T.INK, bg="#ffffff", relief="solid",
+                     bd=1, highlightthickness=1, highlightbackground=T.LINE,
+                     font=("Segoe UI", 10, "bold"), padx=4, pady=1).pack(
+                side="left", padx=1)
+
+    def _start(self, _e=None):
+        if self._recording:
+            return
+        self._recording = True
+        self._mods = set()
+        self._old = self._value
+        self.configure(bg="#ffffff", highlightthickness=4,
+                       highlightbackground=T.ACCENT, highlightcolor=T.ACCENT)
+        for w in self.winfo_children():
+            w.destroy()
+        self._blink_lbl = tk.Label(self, text="请按下新的组合键…（Esc 取消）",
+                                   fg=T.ACCENT, bg="#ffffff",
+                                   font=("Microsoft YaHei UI", 10, "bold"))
+        self._blink_lbl.pack(side="left", padx=4, pady=1)
+
+        def _tick(flag):
+            if not self._recording:
+                return
+            self._blink_lbl.configure(fg=T.ACCENT if flag else T.INK_3)
+            self._blink_job = self.after(500, _tick, not flag)
+        _tick(True)
+        self.focus_force()
+        self.bind("<KeyPress>", self._on_key, add="+")
+        self.bind("<Escape>", self._cancel, add="+")
+        self.bind("<FocusOut>", self._cancel, add="+")
+
+    def _end_recording(self):
+        self._recording = False
+        if self._blink_job:
+            try:
+                self.after_cancel(self._blink_job)
+            except Exception:
+                pass
+            self._blink_job = None
+        try:
+            self.unbind("<KeyPress>")
+            self.unbind("<Escape>")
+            self.unbind("<FocusOut>")
+        except Exception:
+            pass
+
+    def _cancel(self, _e=None):
+        if not self._recording:
+            return
+        self._end_recording()
+        self._value = self._old
+        self.configure(bg=T.SURFACE_2, highlightthickness=1,
+                       highlightbackground=T.LINE)
+        self._render()
+
+    def _on_key(self, event):
+        ks = event.keysym
+        if ks == "Escape":
+            self._cancel()
+            return
+        if ks in ("Control_L", "Control_R"):
+            self._mods.add("Ctrl")
+            return
+        if ks in ("Alt_L", "Alt_R"):
+            self._mods.add("Alt")
+            return
+        if ks in ("Shift_L", "Shift_R"):
+            self._mods.add("Shift")
+            return
+        if ks in ("Super_L", "Super_R", "Win_L", "Win_R",
+                  "Caps_Lock", "Num_Lock"):
+            return
+        if len(ks) == 1 and ks.isalnum():
+            key = ks.upper()
+        elif ks.startswith("F") and ks[1:].isdigit() and 1 <= int(ks[1:]) <= 12:
+            key = ks
+        else:
+            return
+        mods = [m for m in ("Ctrl", "Alt", "Shift") if m in self._mods]
+        text = "+".join(mods + [key])
+        self._end_recording()
+        self._value = text
+        self.configure(bg=T.SURFACE_2, highlightthickness=1,
+                       highlightbackground=T.LINE)
+        self._render()
+        if self._on_record:
+            self._on_record(text)
+
+    def value(self):
+        return self._value
 
 
 class SettingsWindow:
+    NAV = [("general", "⚙  常规"), ("capture", "✂  截图与保存"),
+           ("hotkey", "⌨  热键"), ("storage", "◱  存储"), ("about", "ℹ  关于")]
+
     def __init__(self, root, app):
         self.root = root
         self.app = app
@@ -30,134 +271,56 @@ class SettingsWindow:
         self.win = tk.Toplevel(root)
         self.win.title("ScreenSnap - 设置")
         # 多屏定位：放到鼠标所在屏幕（托盘设置点击处），避免跑偏到其他显示器
-        SettingsWindow._place_on_pointer(self.win, 560, 680)
+        SettingsWindow._place_on_pointer(self.win, 720, 560)
         self.win.resizable(False, False)
-        # 不设置 transient：根窗口处于 withdraw 隐藏态时，transient 子窗口在
-        # 部分 Windows 环境下不会显示（点击设置"啥都没有"）。
-        # self.win.transient(root)
 
-        self._recording = False
-        self._record_old = ""
+        # 主容器：左侧导航 + 右侧内容
+        body = tk.Frame(self.win, bg=T.SURFACE)
+        body.pack(fill="both", expand=True)
+        nav = tk.Frame(body, width=190, bg=T.SURFACE_2)
+        nav.pack(side="left", fill="y")
+        nav.pack_propagate(False)
+        content = tk.Frame(body, bg=T.SURFACE)
+        content.pack(side="left", fill="both", expand=True)
 
-        body = tk.Frame(self.win, bg=UI_BG)
-        body.pack(fill="both", expand=True, padx=20, pady=12)
+        # 左侧分区导航
+        self._nav_items = {}
+        for key, label in self.NAV:
+            b = tk.Label(nav, text=label, bg=T.SURFACE_2, fg=T.INK_2,
+                         font=("Microsoft YaHei UI", 11), anchor="w",
+                         padx=18, pady=8, cursor="hand2")
+            b.pack(fill="x", pady=1)
+            b.bind("<Button-1>", lambda e, k=key: self._show_page(k))
+            self._nav_items[key] = b
+        tk.Label(nav, text="ScreenSnap 2.0 · SHUTTER",
+                 bg=T.SURFACE_2, fg=T.INK_3,
+                 font=("Microsoft YaHei UI", 9)).pack(
+            side="bottom", anchor="w", padx=18, pady=(0, 10))
 
-        # ---------- 快捷键 ----------
-        self._section(body, "全局截图快捷键")
-        row = tk.Frame(body, bg=UI_BG)
-        row.pack(fill="x", pady=2)
-        self.hotkey_var = tk.StringVar(value=self.cfg.get("hotkey", "Ctrl+Alt+A"))
-        self.hotkey_entry = tk.Entry(row, textvariable=self.hotkey_var, width=20,
-                                     font=("Consolas", 12), relief="solid", bd=1,
-                                     highlightthickness=1,
-                                     highlightbackground=UI_BORDER,
-                                     highlightcolor=UI_ACCEPT)
-        self.hotkey_entry.pack(side="left", padx=4)
-        self.rec_btn = self._btn(row, "录制按键", self._toggle_record)
-        self.rec_btn.pack(side="left", padx=4)
-        self._btn(row, "应用并检测冲突", self.apply_hotkey).pack(side="left", padx=8)
-        self.rec_hint = tk.Label(body, text="", bg=UI_BG, fg=UI_ACCEPT,
-                                 font=UI_FONT_SM)
-        tk.Label(body, text="格式示例：Ctrl+Alt+A / Ctrl+Shift+S / Alt+F1",
-                 bg=UI_BG, fg=UI_FG_DIM, font=UI_FONT_SM).pack(anchor="w", padx=4)
+        # 右侧分区页（place + tkraise 切换）
+        self._pages = {}
+        for key, _label in self.NAV:
+            f = tk.Frame(content, bg=T.SURFACE)
+            f.place(x=0, y=0, relwidth=1, relheight=1)
+            self._pages[key] = f
+        self._current = "general"
+        self._show_page("general")
 
-        # ---------- 保存格式 ----------
-        self._section(body, "保存格式")
-        fmt_row = tk.Frame(body, bg=UI_BG)
-        fmt_row.pack(fill="x", pady=3)
-        self.format_var = tk.StringVar(value=self.cfg.get("save_format", "png"))
-        for text, val in (("PNG（清晰无损）", "png"), ("JPG（体积更小）", "jpg")):
-            tk.Radiobutton(fmt_row, text=text, variable=self.format_var,
-                           value=val, bg=UI_BG, fg=UI_FG,
-                           activebackground=UI_BG, activeforeground=UI_FG,
-                           selectcolor="#ffffff", font=UI_FONT,
-                           highlightthickness=0).pack(side="left", padx=8)
+        self._build_general(self._pages["general"])
+        self._build_capture(self._pages["capture"])
+        self._build_hotkey(self._pages["hotkey"])
+        self._build_storage(self._pages["storage"])
+        self._build_about(self._pages["about"])
 
-        # ---------- OCR ----------
-        self._section(body, "OCR 文字识别")
-        ocr_row = tk.Frame(body, bg=UI_BG)
-        ocr_row.pack(fill="x", pady=3)
-        self.ocr_var = tk.BooleanVar(value=bool(self.cfg.get("ocr_enabled", False)))
-        tk.Checkbutton(ocr_row, text="启用 OCR（历史库/贴图中可复制图中文字）",
-                       variable=self.ocr_var, bg=UI_BG, fg=UI_FG,
-                       activebackground=UI_BG, activeforeground=UI_FG,
-                       selectcolor="#ffffff", font=UI_FONT,
-                       highlightthickness=0).pack(side="left", padx=4)
-        ocr_ok = self._ocr_available()
-        tk.Label(ocr_row, text="Tesseract 引擎：已安装" if ocr_ok else "Tesseract 引擎：未安装（启用后需安装）",
-                 bg=UI_BG, fg="#2f7d32" if ocr_ok else "#b26a00",
-                 font=UI_FONT_SM).pack(side="left", padx=10)
-
-        # ---------- 开机自启 ----------
-        self._section(body, "开机自启")
-        auto_row = tk.Frame(body, bg=UI_BG)
-        auto_row.pack(fill="x", pady=3)
-        self.auto_var = tk.BooleanVar(value=bool(self.cfg.get("auto_start", True)))
-        tk.Checkbutton(auto_row, text="开机自动启动（托盘常驻，随时按快捷键截图）",
-                       variable=self.auto_var, bg=UI_BG, fg=UI_FG,
-                       activebackground=UI_BG, activeforeground=UI_FG,
-                       selectcolor="#ffffff", font=UI_FONT,
-                       highlightthickness=0).pack(side="left", padx=4)
-
-        # ---------- 保存路径 ----------
-        self._section(body, "截图保存位置")
-        save_row = tk.Frame(body, bg=UI_BG)
-        save_row.pack(fill="x", pady=3)
-        save_root = self.cfg.get("save_root", "")
-        tk.Label(save_row, text=save_root, bg="#ffffff", fg=UI_FG,
-                 font=("Consolas", 9), anchor="w", padx=6, pady=4,
-                 relief="solid", bd=1,
-                 highlightthickness=1, highlightbackground=UI_BORDER,
-                 highlightcolor=UI_BORDER).pack(fill="x", padx=4)
-        self._btn(save_row, "更改...", self.choose_save_root).pack(anchor="w", padx=8, pady=4)
-
-        # ---------- 回收站 ----------
-        self._section(body, "回收站")
-        trash_row = tk.Frame(body, bg=UI_BG)
-        trash_row.pack(fill="x", pady=3)
-        self.trash_var = tk.StringVar(
-            value=f"{self.app.storage.trash_count()} 条记录（删除后保留 {self.cfg.get('trash_days', 3)} 天）")
-        tk.Label(trash_row, textvariable=self.trash_var, bg=UI_BG, fg=UI_FG,
-                 font=UI_FONT).pack(side="left", padx=8)
-        self._btn(trash_row, "立即清空回收站", self.empty_trash,
-                  danger=True).pack(side="left", padx=8)
-
-        # ---------- 回收站保留天数 ----------
-        self._section(body, "回收站保留天数")
-        days_row = tk.Frame(body, bg=UI_BG)
-        days_row.pack(fill="x", pady=3)
-        trash_days_val = int(self.cfg.get("trash_days", 3))
-        self.trash_days_var = tk.StringVar(value=str(trash_days_val))
-        days_opts = ["0", "3", "7", "30"]
-        if str(trash_days_val) not in days_opts:
-            days_opts.insert(0, str(trash_days_val))
-        self._option_menu(days_row, self.trash_days_var, *days_opts).pack(side="left", padx=4)
-        tk.Label(days_row, text="天（0 = 立即删除不保留）",
-                 bg=UI_BG, fg=UI_FG_DIM, font=UI_FONT).pack(side="left", padx=6)
-
-        # ---------- 历史库每列最多张数 ----------
-        self._section(body, "历史库每列最多张数")
-        cap_row = tk.Frame(body, bg=UI_BG)
-        cap_row.pack(fill="x", pady=3)
-        cap_val = int(self.cfg.get("column_capacity", 10))
-        self.column_cap_var = tk.StringVar(value=str(cap_val))
-        cap_opts = ["5", "7", "10"]
-        if str(cap_val) not in cap_opts:
-            cap_opts.insert(0, str(cap_val))
-        self._option_menu(cap_row, self.column_cap_var, *cap_opts).pack(side="left", padx=4)
-        tk.Label(cap_row, text="张/列（历史库按日期分组时每列最多显示张数）",
-                 bg=UI_BG, fg=UI_FG_DIM, font=UI_FONT).pack(side="left", padx=6)
-
-        # ---------- 保存 ----------
-        bar = tk.Frame(self.win, bg=UI_BG)
-        tk.Frame(bar, bg=UI_BORDER, height=1).pack(fill="x", pady=(0, 8))
-        bar.pack(fill="x", padx=20, pady=(0, 12))
+        # 底部保存栏
+        bar = tk.Frame(self.win, bg=T.SURFACE)
+        tk.Frame(bar, bg=T.LINE, height=1).pack(fill="x")
+        bar.pack(fill="x", side="bottom")
         tk.Button(bar, text="✓ 保存设置", command=self.save_all,
-                  bg=UI_ACCEPT, fg="white", activebackground=UI_ACCEPT_D,
-                  font=("Microsoft YaHei UI", 10, "bold"), relief="flat", bd=0,
-                  padx=22, pady=5, cursor="hand2",
-                  highlightthickness=1, highlightbackground=UI_ACCEPT,
-                  highlightcolor=UI_ACCEPT).pack(side="right")
+                  bg=T.SUCCESS, fg="#ffffff", activebackground=T.SUCCESS_HOVER,
+                  font=("Microsoft YaHei UI", 11, "bold"), relief="flat", bd=0,
+                  padx=24, pady=6, cursor="hand2",
+                  highlightthickness=0).pack(side="right", padx=20, pady=10)
 
         # 强制显示并置顶，避免在隐藏根窗口下不渲染
         self.win.deiconify()
@@ -165,7 +328,179 @@ class SettingsWindow:
         self.win.focus_force()
         self.win.update_idletasks()
 
-    # ---------- UI 辅助（对齐 editor.py 风格） ----------
+    # ---------- 导航与布局 ----------
+    def _show_page(self, key):
+        self._current = key
+        for k, f in self._pages.items():
+            if k == key:
+                f.tkraise()
+        for k, b in self._nav_items.items():
+            on = k == key
+            b.configure(bg=T.ACCENT_SOFT if on else T.SURFACE_2,
+                        fg=T.ACCENT if on else T.INK_2,
+                        font=("Microsoft YaHei UI", 11,
+                              "bold" if on else "normal"))
+
+    def _page_head(self, parent, title, desc):
+        tk.Label(parent, text=title, bg=T.SURFACE, fg=T.INK,
+                 font=("Microsoft YaHei UI", 15, "bold"),
+                 anchor="w").pack(anchor="w", padx=32, pady=(24, 2))
+        tk.Label(parent, text=desc, bg=T.SURFACE, fg=T.INK_2,
+                 font=("Microsoft YaHei UI", 11), anchor="w").pack(
+            anchor="w", padx=32, pady=(0, 6))
+        tk.Frame(parent, bg=T.LINE, height=1).pack(fill="x", padx=32,
+                                                   pady=(0, 6))
+
+    def _add_row(self, parent, title, desc, ctrl):
+        """行式表单：标题+说明左置，控件右置。"""
+        row = tk.Frame(parent, bg=T.SURFACE)
+        row.pack(fill="x", padx=32, pady=8)
+        txt = tk.Frame(row, bg=T.SURFACE)
+        txt.pack(side="left", fill="x", expand=True)
+        tk.Label(txt, text=title, bg=T.SURFACE, fg=T.INK,
+                 font=("Microsoft YaHei UI", 11, "bold"),
+                 anchor="w").pack(anchor="w")
+        tk.Label(txt, text=desc, bg=T.SURFACE, fg=T.INK_2,
+                 font=("Microsoft YaHei UI", 10), anchor="w",
+                 justify="left").pack(anchor="w", pady=(1, 0))
+        ctrl.pack(side="right", padx=(16, 0))
+        tk.Frame(parent, bg=T.LINE, height=1).pack(fill="x", padx=32)
+
+    # ---------- 分区内容 ----------
+    def _build_general(self, page):
+        self._page_head(page, "常规", "基础行为与启动选项")
+        self.auto_var = tk.BooleanVar(
+            value=bool(self.cfg.get("auto_start", True)))
+        sw1 = Switch(page, self.auto_var.get(),
+                     command=lambda on, v=self.auto_var: v.set(on))
+        self._add_row(page, "开机自动启动",
+                      "登录 Windows 后在后台运行，随时按热键唤起", sw1)
+        self.auto_copy_var = tk.BooleanVar(
+            value=bool(self.cfg.get("auto_copy", True)))
+        sw2 = Switch(page, self.auto_copy_var.get(),
+                     command=lambda on, v=self.auto_copy_var: v.set(on))
+        self._add_row(page, "截图后自动复制到剪贴板",
+                      "完成后无需粘贴操作，直接 Ctrl+V 即用", sw2)
+
+    def _build_capture(self, page):
+        self._page_head(page, "截图与保存", "保存格式与目录")
+        self.format_var = tk.StringVar(
+            value=self.cfg.get("save_format", "png"))
+        seg = Seg(page, [("PNG", "png"), ("JPG", "jpg")],
+                  self.format_var.get(), command=self.format_var.set)
+        self._add_row(page, "保存格式",
+                      "PNG 无损（推荐），JPG 体积更小", seg)
+        # 保存位置
+        save_root = self.cfg.get("save_root", "")
+        row = tk.Frame(page, bg=T.SURFACE)
+        row.pack(fill="x", padx=32, pady=8)
+        txt = tk.Frame(row, bg=T.SURFACE)
+        txt.pack(side="left", fill="x", expand=True)
+        tk.Label(txt, text="保存位置", bg=T.SURFACE, fg=T.INK,
+                 font=("Microsoft YaHei UI", 11, "bold"),
+                 anchor="w").pack(anchor="w")
+        tk.Label(txt, text="历史库与自动保存共用此目录", bg=T.SURFACE,
+                 fg=T.INK_2, font=("Microsoft YaHei UI", 10),
+                 anchor="w").pack(anchor="w", pady=(1, 0))
+        ctrl = tk.Frame(row, bg=T.SURFACE)
+        ctrl.pack(side="right", padx=(16, 0))
+        self._path_lbl = tk.Label(
+            ctrl, text=save_root or "（未设置，默认我的图片）",
+            bg=T.SURFACE_2, fg=T.INK_2, font=("Segoe UI", 10), anchor="w",
+            padx=10, pady=6, width=36, highlightthickness=1,
+            highlightbackground=T.LINE)
+        self._path_lbl.pack(side="left")
+        browse = tk.Button(
+            ctrl, text="浏览…", command=self.choose_save_root,
+            relief="flat", bd=0, bg=T.SURFACE_2, fg=T.INK,
+            activebackground=T.SURFACE_3, activeforeground=T.INK,
+            font=("Microsoft YaHei UI", 10), cursor="hand2",
+            padx=12, pady=6, highlightthickness=1,
+            highlightbackground=T.LINE)
+        browse.pack(side="left", padx=(8, 0))
+        tk.Frame(page, bg=T.LINE, height=1).pack(fill="x", padx=32)
+
+    def _build_hotkey(self, page):
+        self._page_head(page, "热键", "全局截图快捷键")
+        self.hotkey_var = tk.StringVar(
+            value=self.cfg.get("hotkey", "Ctrl+Alt+A"))
+        self._hk_hint = tk.Label(page, text="", bg=T.SURFACE, fg=T.SUCCESS,
+                                 font=("Microsoft YaHei UI", 10), anchor="w")
+        hkbox = HotkeyBox(page, self.hotkey_var.get(),
+                          on_record=self._on_hotkey_recorded)
+        self._add_row(page, "全局截图热键",
+                      "点击输入框后直接按下新组合键；与其他软件冲突时会即时提示",
+                      hkbox)
+        self._hk_hint.pack(anchor="w", padx=32, pady=(0, 4))
+        tk.Label(page, text="格式示例：Ctrl+Alt+A / Ctrl+Shift+S / Alt+F1",
+                 bg=T.SURFACE, fg=T.INK_3,
+                 font=("Microsoft YaHei UI", 10), anchor="w").pack(
+            anchor="w", padx=32)
+
+    def _on_hotkey_recorded(self, text):
+        ok, err = self.app.change_hotkey(text)
+        if ok:
+            self.hotkey_var.set(text)
+            self._hk_hint.configure(text=f"已生效：{text}", fg=T.SUCCESS)
+        else:
+            self.hotkey_var.set(self.cfg.get("hotkey", ""))
+            self._hk_hint.configure(text=err or "快捷键无效", fg=T.DANGER)
+
+    def _build_storage(self, page):
+        self._page_head(page, "存储", "回收站与历史库")
+        # 回收站信息 + 清空
+        self.trash_var = tk.StringVar(
+            value=f"{self.app.storage.trash_count()} 条记录（删除后保留 "
+                  f"{self.cfg.get('trash_days', 3)} 天）")
+        row = tk.Frame(page, bg=T.SURFACE)
+        row.pack(fill="x", padx=32, pady=8)
+        txt = tk.Frame(row, bg=T.SURFACE)
+        txt.pack(side="left", fill="x", expand=True)
+        tk.Label(txt, text="回收站", bg=T.SURFACE, fg=T.INK,
+                 font=("Microsoft YaHei UI", 11, "bold"),
+                 anchor="w").pack(anchor="w")
+        tk.Label(txt, textvariable=self.trash_var, bg=T.SURFACE,
+                 fg=T.INK_2, font=("Microsoft YaHei UI", 10),
+                 anchor="w").pack(anchor="w", pady=(1, 0))
+        tk.Button(row, text="立即清空回收站", command=self.empty_trash,
+                  relief="flat", bd=0, bg=T.DANGER, fg="#ffffff",
+                  activebackground="#d93b40", activeforeground="#ffffff",
+                  font=("Microsoft YaHei UI", 10), cursor="hand2",
+                  padx=12, pady=6).pack(side="right", padx=(16, 0))
+        tk.Frame(page, bg=T.LINE, height=1).pack(fill="x", padx=32)
+        # 保留天数步进器
+        self.trash_days_stepper = Stepper(
+            page, int(self.cfg.get("trash_days", 3)), lo=0, hi=30)
+        self._add_row(page, "回收站保留天数",
+                      "到期自动清理，期间可随时恢复", self.trash_days_stepper)
+        # 历史库每列最多张数
+        cap_val = int(self.cfg.get("column_capacity", 10))
+        self.column_cap_var = tk.StringVar(value=str(cap_val))
+        cap_opts = ["5", "7", "10"]
+        if str(cap_val) not in cap_opts:
+            cap_opts.insert(0, str(cap_val))
+        om = self._option_menu(page, self.column_cap_var, *cap_opts)
+        self._add_row(page, "历史库每列最多张数",
+                      "历史库按日期分组时每列最多显示张数", om)
+
+    def _build_about(self, page):
+        self._page_head(page, "关于", "ScreenSnap 截图工具")
+        rows = [("版本", "ScreenSnap 2.0"),
+                ("设计语言", "SHUTTER（取景器）· Windows Fluent 适配"),
+                ("配色", f"主色 {T.ACCENT} · 完成 {T.SUCCESS} · 危险 {T.DANGER}")]
+        for i, (k, v) in enumerate(rows):
+            row = tk.Frame(page, bg=T.SURFACE)
+            row.pack(fill="x", padx=32, pady=6)
+            tk.Label(row, text=k, bg=T.SURFACE, fg=T.INK_2, width=8,
+                     font=("Microsoft YaHei UI", 10), anchor="w").pack(
+                side="left")
+            tk.Label(row, text=v, bg=T.SURFACE, fg=T.INK,
+                     font=("Microsoft YaHei UI", 10), anchor="w").pack(
+                side="left")
+            if i < len(rows) - 1:
+                tk.Frame(page, bg=T.LINE, height=1).pack(fill="x", padx=32)
+
+    # ---------- UI 辅助 ----------
     @staticmethod
     def _monitor_rects():
         """枚举所有显示器物理边界（虚拟屏坐标，含负值区域）。"""
@@ -205,153 +540,19 @@ class SettingsWindow:
             pass
         win.geometry(f"{w}x{h}")  # 兜底：交给系统默认定位
 
-    @staticmethod
-    def _round_rect(cv, x1, y1, x2, y2, r, **kw):
-        """在 Canvas 上绘制圆角矩形（同 editor.py）。"""
-        pts = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
-               x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
-        return cv.create_polygon(pts, smooth=True, **kw)
-
-    def _section(self, parent, title):
-        """分区标题：深灰粗体 + 绿色圆角小条（呼应 editor 工具条带）。"""
-        row = tk.Frame(parent, bg=UI_BG)
-        row.pack(fill="x", anchor="w", pady=(10, 2))
-        tag = tk.Canvas(row, width=4, height=14, bg=UI_BG,
-                        highlightthickness=0, bd=0)
-        tag.pack(side="left", padx=(2, 7))
-        self._round_rect(tag, 0, 1, 4, 14, 2, fill=UI_ACCEPT, outline="")
-        tk.Label(row, text=title, bg=UI_BG, fg=UI_FG,
-                 font=("Microsoft YaHei UI", 10, "bold")).pack(side="left")
-
-    def _btn(self, parent, text, command, danger=False):
-        """统一浅灰按钮（hover 变深）；danger 为红色警示（对齐取消✕色）。"""
-        b = tk.Button(parent, text=text, command=command, relief="flat", bd=0,
-                      bg=UI_ACCEPT if danger else UI_BG,
-                      fg="white" if danger else UI_FG,
-                      activebackground=UI_ACCEPT_D if danger else UI_BG_DEEP,
-                      activeforeground="white" if danger else UI_FG,
-                      font=UI_FONT, cursor="hand2", padx=10, pady=3,
-                      highlightthickness=1,
-                      highlightbackground=(UI_ACCEPT if danger else UI_BORDER),
-                      highlightcolor=(UI_ACCEPT if danger else UI_BORDER))
-        if not danger:
-            b.bind("<Enter>", lambda e: b.configure(bg=UI_BG_DEEP), add="+")
-            b.bind("<Leave>", lambda e: b.configure(bg=UI_BG), add="+")
-        return b
-
     def _option_menu(self, parent, var, *values):
-        """统一下拉菜单：浅灰按钮 + 白底弹出、选中态高亮。"""
         mb = tk.OptionMenu(parent, var, *values)
-        mb.config(bg=UI_BG, fg=UI_FG, activebackground=UI_BG_DEEP,
-                  activeforeground=UI_FG, relief="flat", bd=0,
-                  font=UI_FONT, cursor="hand2",
-                  highlightthickness=1, highlightbackground=UI_BORDER,
-                  highlightcolor=UI_BORDER)
+        mb.config(bg=T.SURFACE, fg=T.INK, activebackground=T.SURFACE_3,
+                  activeforeground=T.INK, relief="flat", bd=0,
+                  font=("Microsoft YaHei UI", 10), cursor="hand2",
+                  highlightthickness=1, highlightbackground=T.LINE)
         menu = mb["menu"]
-        menu.config(bg="#ffffff", fg=UI_FG, activebackground=UI_SELECT,
-                    activeforeground="#1f1f1f", bd=0, relief="flat",
-                    font=UI_FONT)
+        menu.config(bg="#ffffff", fg=T.INK, activebackground=T.ACCENT_SOFT,
+                    activeforeground=T.ACCENT, bd=0, relief="flat",
+                    font=("Microsoft YaHei UI", 10))
         return mb
 
-    # ---------- 按键录制 ----------
-    def _toggle_record(self):
-        if self._recording:
-            self._stop_record(restore=True)
-            return
-        self._recording = True
-        self._record_old = self.hotkey_var.get()
-        self._record_mods = set()
-        self.rec_btn.config(text="取消录制")
-        self.rec_hint.config(text="请按下组合键…（Esc 取消）")
-        self.rec_hint.pack(anchor="w", padx=4)
-        self.win.bind("<KeyPress>", self._on_record_key, add="+")
-        self.win.bind("<KeyRelease>", self._on_record_release, add="+")
-        self.win.bind("<FocusOut>", self._on_record_focusout, add="+")
-        # 焦点移到窗口自身，避免按键落入输入框/按钮
-        self.win.focus_force()
-
-    def _stop_record(self, restore=False):
-        if not self._recording:
-            return
-        self._recording = False
-        self._record_mods = set()
-        try:
-            self.win.unbind("<KeyPress>")
-            self.win.unbind("<KeyRelease>")
-            self.win.unbind("<FocusOut>")
-        except Exception:
-            pass
-        self.rec_btn.config(text="录制按键")
-        self.rec_hint.pack_forget()
-        if restore:
-            self.hotkey_var.set(self._record_old)
-
-    def _on_record_release(self, event):
-        # 修饰键释放：从维护的集合中移除，防止状态残留
-        ks = event.keysym
-        if ks in ("Control_L", "Control_R"):
-            self._record_mods.discard("Ctrl")
-        elif ks in ("Alt_L", "Alt_R"):
-            self._record_mods.discard("Alt")
-        elif ks in ("Shift_L", "Shift_R"):
-            self._record_mods.discard("Shift")
-
-    def _on_record_focusout(self, _event=None):
-        # 失焦清空，避免残留修饰键状态
-        self._record_mods.clear()
-
-    def _on_record_key(self, event):
-        # Esc：取消监听并恢复原值
-        if event.keysym == "Escape":
-            self._stop_record(restore=True)
-            return
-        # 纯修饰键：用键码维护集合，不读 event.state
-        # （本机 event.state 会被键盘固件污染：按 Ctrl+Shift+A 时错误带上 Alt 位 0x8）
-        ks = event.keysym
-        if ks in ("Control_L", "Control_R"):
-            self._record_mods.add("Ctrl")
-            return
-        if ks in ("Alt_L", "Alt_R"):
-            self._record_mods.add("Alt")
-            return
-        if ks in ("Shift_L", "Shift_R"):
-            self._record_mods.add("Shift")
-            return
-        if ks in ("Super_L", "Super_R", "Win_L", "Win_R",
-                  "Caps_Lock", "Num_Lock"):
-            return
-        # 主键限定：字母/数字/F1-F12
-        if len(ks) == 1 and ks.isalnum():
-            key = ks.upper()
-        elif (ks.startswith("F") and ks[1:].isdigit()
-                and 1 <= int(ks[1:]) <= 12):
-            key = ks
-        else:
-            return
-        mods = []
-        for m in ("Ctrl", "Alt", "Shift"):
-            if m in self._record_mods:
-                mods.append(m)
-        self.hotkey_var.set("+".join(mods + [key]))
-        self._stop_record(restore=False)
-
-    def _ocr_available(self):
-        try:
-            import ocr
-            return ocr.is_available()
-        except Exception:
-            return False
-
     # ---------- 动作 ----------
-    def apply_hotkey(self):
-        text = self.hotkey_var.get().strip()
-        ok, err = self.app.change_hotkey(text)
-        if ok:
-            messagebox.showinfo("ScreenSnap", f"快捷键已生效：{text}", parent=self.win)
-        else:
-            messagebox.showerror("ScreenSnap", err or "快捷键无效", parent=self.win)
-        self.hotkey_var.set(self.cfg.get("hotkey", ""))
-
     def choose_save_root(self):
         from tkinter import filedialog
         p = filedialog.askdirectory(title="选择截图保存目录", parent=self.win)
@@ -359,7 +560,7 @@ class SettingsWindow:
             self.cfg["save_root"] = p
             from config import save_config
             save_config(self.cfg)
-            messagebox.showinfo("ScreenSnap", f"保存位置已更新：{p}", parent=self.win)
+            self._path_lbl.configure(text=p)
 
     def empty_trash(self):
         import shutil
@@ -375,16 +576,17 @@ class SettingsWindow:
     def save_all(self):
         self.cfg["hotkey"] = self.hotkey_var.get().strip()
         self.cfg["save_format"] = self.format_var.get()
-        self.cfg["ocr_enabled"] = bool(self.ocr_var.get())
         self.cfg["auto_start"] = bool(self.auto_var.get())
-        self.cfg["trash_days"] = int(self.trash_days_var.get())
+        self.cfg["auto_copy"] = bool(self.auto_copy_var.get())
+        self.cfg["trash_days"] = int(self.trash_days_stepper.value())
         self.cfg["column_capacity"] = int(self.column_cap_var.get())
         from config import save_config
         save_config(self.cfg)
         self.app.storage.trash_days = self.cfg["trash_days"]  # 同步到已实例化的 storage，立即生效
         self.app.apply_auto_start()
         self.trash_var.set(
-            f"{self.app.storage.trash_count()} 条记录（删除后保留 {self.cfg.get('trash_days', 3)} 天）")
+            f"{self.app.storage.trash_count()} 条记录（删除后保留 "
+            f"{self.cfg.get('trash_days', 3)} 天）")
         # 先弹提示（跟随设置窗口），确认后再关闭设置页
         messagebox.showinfo("ScreenSnap", "设置已保存", parent=self.win)
         self.win.destroy()

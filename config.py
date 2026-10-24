@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""配置管理：快捷键、保存格式、OCR、开机自启等。"""
+"""配置管理：快捷键、保存格式、开机自启等。"""
 import json
 import os
 import sys
@@ -19,8 +19,8 @@ DEFAULT_CONFIG = {
     "hotkey": "Ctrl+Alt+A",        # 全局截图快捷键
     "save_format": "png",          # png / jpg
     "save_root": DEFAULT_SAVE_ROOT,
-    "ocr_enabled": False,          # OCR 开关
     "auto_start": True,            # 开机自启
+    "auto_copy": True,             # 截图完成后自动复制到剪贴板
     "trash_days": 3,               # 回收站保留天数
     "column_capacity": 10,         # 历史库每列最多张数
 }

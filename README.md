@@ -1,6 +1,17 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: d61c21c24e7ef9b8faace3b19fc9bf98_c59da1d5caf011f196f9525400248c00
+    ReservedCode1: 4PYAkHrp1DiFlN2ceNkyE5KYzKe3c4X7HgZt7gP4RCaaXwshdj36wOjTgIeiWSBzqk4NR79PXrYjXFhfl8Maeb5YrjAg/tdt2JFtBQT5LcV0X3bo291e55VkbjJdP2c80Mcuo+g1i9wPaCQw8mZOnGmFtCrf0mYeyen1Tu6K0rdYqiPT7qBF47fMRkk=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: d61c21c24e7ef9b8faace3b19fc9bf98_c59da1d5caf011f196f9525400248c00
+    ReservedCode2: 4PYAkHrp1DiFlN2ceNkyE5KYzKe3c4X7HgZt7gP4RCaaXwshdj36wOjTgIeiWSBzqk4NR79PXrYjXFhfl8Maeb5YrjAg/tdt2JFtBQT5LcV0X3bo291e55VkbjJdP2c80Mcuo+g1i9wPaCQw8mZOnGmFtCrf0mYeyen1Tu6K0rdYqiPT7qBF47fMRkk=
+---
+
 # ScreenSnap
 
-轻量、高效的 Windows 截图与贴图工具，支持全局热键截图、标注编辑、贴图、历史库管理与 OCR 识别。使用 Python + Tkinter 开发，无 Web 依赖，纯本地运行。
+轻量、高效的 Windows 截图与贴图工具，支持全局热键截图、标注编辑、贴图与历史库管理。使用 Python + Tkinter 开发，无 Web 依赖，纯本地运行。
 
 ## 功能特性
 
@@ -10,7 +21,6 @@
 - **贴图功能**：截图后按指定键将选区贴到屏幕上，支持滚轮缩放、拖动、双击缩略
 - **历史库**：自动保存截图历史，真无限画布浏览，支持按日期归档、拖拽排序、双击查看大图
 - **大图查看**：内置大图查看器，支持缩放平移、二次编辑与确认保存
-- **OCR 识别**：集成 pytesseract，可对截图进行文字识别（需安装 Tesseract-OCR 引擎及中文语言包）
 - **剪贴板联动**：截图后自动复制到剪贴板
 - **回收站机制**：删除的截图进入本地回收站，可设置保留天数
 - **单实例运行**：防止多开冲突
@@ -25,7 +35,7 @@
 ### 方式二：源码运行
 
 ```bash
-pip install pillow pystray pytesseract
+pip install pillow pystray
 python main.py
 ```
 
@@ -48,7 +58,6 @@ ScreenSnap/
 ├── gallery.py      # 历史库（无限画布）与大图查看
 ├── sticker.py      # 贴图功能
 ├── clipboard.py    # 剪贴板读写
-├── ocr.py          # OCR 识别
 ├── settings.py     # 设置窗口
 ├── storage.py      # 历史/回收站存储管理
 ├── hotkey.py       # 全局热键注册
@@ -72,16 +81,15 @@ ScreenSnap/
 - Python 3.11+ / Tkinter
 - Pillow（图像处理）
 - pystray（系统托盘）
-- pytesseract（OCR）
 - PyInstaller（打包）
 - Inno Setup（安装包）
 
 ## 常见问题
 
-- **OCR 不可用**：需要先安装 [Tesseract-OCR](https://github.com/tesseract-ocr/tesseract) 引擎与 `chi_sim` 中文语言包
 - **热键无响应**：检查是否被其他程序占用（如输入法、远程控制软件），可在设置中更换快捷键
 - **多显示器**：截图与弹窗会跟随鼠标所在屏幕定位
 
 ## License
 
 本项目仅供个人使用，未经许可不得用于商业分发。
+*（内容由AI生成，仅供参考）*

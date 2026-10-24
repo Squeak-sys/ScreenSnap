@@ -1,0 +1,85 @@
+109 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
+110 INFO: Python: 3.13.14
+139 INFO: Platform: Windows-11-10.0.22621-SP0
+139 INFO: Python environment: E:\PythonProjects\Python\.venv
+141 INFO: Module search paths (PYTHONPATH):
+['E:\\PythonProjects\\Python\\ScreenSnap',
+ 'E:\\PythonProjects\\Python\\.venv\\Scripts\\python313.zip',
+ 'C:\\Program Files\\Python313\\DLLs',
+ 'C:\\Program Files\\Python313\\Lib',
+ 'C:\\Program Files\\Python313',
+ 'E:\\PythonProjects\\Python\\.venv',
+ 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages',
+ 'E:\\PythonProjects\\Python\\ScreenSnap']
+468 INFO: Appending 'datas' from .spec
+469 INFO: checking Analysis
+477 INFO: Building because excludes changed
+477 INFO: Looking for Python shared library...
+478 INFO: Using Python shared library: E:\PythonProjects\Python\.venv\Scripts\python313.dll
+478 INFO: Running Analysis Analysis-00.toc
+478 INFO: Target bytecode optimization level: 0
+479 INFO: Initializing module dependency graph...
+479 INFO: Initializing module graph hook caches...
+490 INFO: Analyzing modules for base_library.zip ...
+1268 INFO: Processing standard module hook 'hook-math.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+1501 INFO: Processing standard module hook 'hook-encodings.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+2811 INFO: Processing standard module hook 'hook-pickle.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+3515 INFO: Processing standard module hook 'hook-heapq.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+3828 INFO: Caching module dependency graph...
+3857 INFO: Analyzing E:\PythonProjects\Python\ScreenSnap\main.py
+3866 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+3869 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+4098 INFO: Processing standard module hook 'hook-_tkinter.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4130 INFO: Processing standard module hook 'hook-sysconfig.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4133 INFO: Processing standard module hook 'hook-_ctypes.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4144 INFO: Processing standard module hook 'hook-pystray.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+4392 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+4448 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+4462 INFO: Processing standard module hook 'hook-PIL.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4579 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4822 INFO: Processing standard module hook 'hook-xml.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4825 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4891 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+5522 INFO: Processing standard module hook 'hook-platform.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+5562 INFO: Processing standard module hook 'hook-webbrowser.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+5725 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+5948 INFO: Processing standard module hook 'hook-imageio_ffmpeg.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+6227 INFO: Processing module hooks (post-graph stage)...
+6457 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6488 INFO: Processing standard module hook 'hook-_tkinter.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6501 INFO: Performing binary vs. data reclassification (940 entries)
+6550 INFO: Looking for ctypes DLLs
+6605 INFO: Analyzing run-time hooks ...
+6607 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+6609 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+6611 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'E:\\PythonProjects\\Python\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+6629 INFO: Creating base_library.zip...
+6653 INFO: Looking for dynamic libraries
+6773 INFO: Extra DLL search directories (AddDllDirectory): []
+6781 INFO: Extra DLL search directories (PATH): []
+7093 INFO: Warnings written to E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\warn-ScreenSnap.txt
+7112 INFO: Graph cross-reference written to E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\xref-ScreenSnap.html
+7133 INFO: checking PYZ
+7138 INFO: Building because E:\PythonProjects\Python\ScreenSnap\editor.py changed
+7139 INFO: Building PYZ (ZlibArchive) E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\PYZ-00.pyz
+7427 INFO: Building PYZ (ZlibArchive) E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\PYZ-00.pyz completed successfully.
+7432 INFO: checking PKG
+7433 INFO: Building because E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\PYZ-00.pyz changed
+7433 INFO: Building PKG (CArchive) ScreenSnap.pkg
+7475 INFO: Building PKG (CArchive) ScreenSnap.pkg completed successfully.
+7476 INFO: Bootloader E:\PythonProjects\Python\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+7477 INFO: checking EXE
+7477 INFO: Rebuilding EXE-00.toc because pkg is more recent
+7477 INFO: Building EXE from EXE-00.toc
+7478 INFO: Copying bootloader EXE to E:\PythonProjects\Python\ScreenSnap\build\ScreenSnap\ScreenSnap.exe
+7480 INFO: Copying icon to EXE
+7483 INFO: Copying 0 resources to EXE
+7483 INFO: Embedding manifest in EXE
+7485 INFO: Appending PKG archive to EXE
+7487 INFO: Fixing EXE headers
+7543 INFO: Building EXE from EXE-00.toc completed successfully.
+7549 INFO: checking COLLECT
+7556 INFO: Removing dir E:\PythonProjects\Python\ScreenSnap\dist\ScreenSnap
+7678 INFO: Building COLLECT COLLECT-00.toc
+8423 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+8434 INFO: Build complete! The results are available in: E:\PythonProjects\Python\ScreenSnap\dist
