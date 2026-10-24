@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox
 import math
 
 import editor
+import ui_theme as T
 from PIL import Image, ImageDraw, ImageTk
 
 THUMB_W, THUMB_H = 180, 130
@@ -648,7 +649,7 @@ class _EmbeddedToolbar(tk.Frame):
     提供与 editor.ToolbarWindow 一致的接口（_highlight_tool / set_color / set_width），
     保证 _LargeViewer 复用 EditorWindow 继承来的样式方法（set_color/set_width/undo）可用。"""
 
-    def __init__(self, master, ed, bg="#f0f0f0"):
+    def __init__(self, master, ed, bg=T.CANVAS):
         super().__init__(master, bg=bg)
         self.editor = ed
         self._tool_btns = {}
@@ -658,11 +659,11 @@ class _EmbeddedToolbar(tk.Frame):
             kw.setdefault("relief", "flat")
             kw.setdefault("bd", 0)
             kw.setdefault("cursor", "hand2")
-            kw.setdefault("bg", "#f7f7f7")
-            kw.setdefault("activebackground", "#e8e8e8")
+            kw.setdefault("bg", T.TOOLBAR)
+            kw.setdefault("activebackground", T.SURFACE_3)
             kw.setdefault("highlightthickness", 1)
-            kw.setdefault("highlightbackground", "#f7f7f7")
-            kw.setdefault("highlightcolor", "#f7f7f7")
+            kw.setdefault("highlightbackground", T.TOOLBAR)
+            kw.setdefault("highlightcolor", T.TOOLBAR)
             kw.setdefault("font", ("Microsoft YaHei UI", 9))
             return tk.Button(parent, **kw)
 
@@ -676,25 +677,25 @@ class _EmbeddedToolbar(tk.Frame):
                         command=lambda t=tool: self.editor.set_tool(t))
             b.pack(side="left", padx=2)
             self._tool_btns[tool] = b
-            self._normal_bg[b] = "#f7f7f7"
+            self._normal_bg[b] = T.TOOLBAR
 
         # 颜色：色块按钮 + 下拉菜单（Menu 弹出，不创建独立窗口）
-        self._color_btn = _mk_btn(row1, text="", bg="#e62117",
-                                  activebackground="#e62117",
+        self._color_btn = _mk_btn(row1, text="", bg=T.DANGER,
+                                  activebackground=T.DANGER,
                                   command=self._open_color_menu)
         self._color_btn.pack(side="left", padx=(6, 2))
-        self._normal_bg[self._color_btn] = "#e62117"
+        self._normal_bg[self._color_btn] = T.DANGER
 
         # 线宽：下拉菜单
-        self._width_btn = _mk_btn(row1, text="线宽·中", fg="#333333",
+        self._width_btn = _mk_btn(row1, text="线宽·中", fg=T.INK,
                                   command=self._open_width_menu)
         self._width_btn.pack(side="left", padx=2)
-        self._normal_bg[self._width_btn] = "#f7f7f7"
+        self._normal_bg[self._width_btn] = T.TOOLBAR
 
-        undo_b = _mk_btn(row1, text="撤销", fg="#333333",
+        undo_b = _mk_btn(row1, text="撤销", fg=T.INK,
                          command=self.editor.undo)
         undo_b.pack(side="left", padx=2)
-        self._normal_bg[undo_b] = "#f7f7f7"
+        self._normal_bg[undo_b] = T.TOOLBAR
 
         # 第二行：常用操作（复制/另存/保存/删除/盯住/关闭）
         row2 = tk.Frame(self, bg=bg)
@@ -706,7 +707,7 @@ class _EmbeddedToolbar(tk.Frame):
                           ("删除(回收站)", self.editor._delete_btn),
                           ("盯住", self.editor.pin),
                           ("关闭", self.editor.done)):
-            b = _mk_btn(row2, text=text, fg="#333333", command=cmd)
+            b = _mk_btn(row2, text=text, fg=T.INK, command=cmd)
             b.pack(side="left", padx=2)
 
     def _open_color_menu(self):
@@ -737,19 +738,19 @@ class _EmbeddedToolbar(tk.Frame):
         cur = self.editor.tool
         for t, b in self._tool_btns.items():
             if t == cur:
-                b.configure(bg="#d7e3f4", activebackground="#c4d6ef",
-                            highlightbackground="#c4d6ef",
-                            highlightcolor="#c4d6ef")
+                b.configure(bg=T.ACCENT_SOFT, activebackground=T.ACCENT_SOFT,
+                            highlightbackground=T.ACCENT_SOFT,
+                            highlightcolor=T.ACCENT_SOFT)
             else:
-                b.configure(bg="#f7f7f7", activebackground="#e8e8e8",
-                            highlightbackground="#f7f7f7",
-                            highlightcolor="#f7f7f7")
+                b.configure(bg=T.TOOLBAR, activebackground=T.SURFACE_3,
+                            highlightbackground=T.TOOLBAR,
+                            highlightcolor=T.TOOLBAR)
 
     def set_color(self, rgb):
         hexc = "#{:02x}{:02x}{:02x}".format(*rgb)
         self._color_btn.configure(bg=hexc, activebackground=hexc,
-                                  highlightbackground="#ffb800",
-                                  highlightcolor="#ffb800")
+                                  highlightbackground=T.ACCENT,
+                                  highlightcolor=T.ACCENT)
 
     def set_width(self, w, name=None):
         if name is None:

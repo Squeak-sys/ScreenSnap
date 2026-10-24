@@ -362,8 +362,12 @@ class SettingsWindow:
                  anchor="w").pack(anchor="w")
         tk.Label(txt, text=desc, bg=T.SURFACE, fg=T.INK_2,
                  font=("Microsoft YaHei UI", 10), anchor="w",
-                 justify="left").pack(anchor="w", pady=(1, 0))
-        ctrl.pack(side="right", padx=(16, 0))
+                 justify="left", wraplength=300).pack(anchor="w", pady=(1, 0))
+        # in_=row：控件的 master 是 page，必须 pack 到行容器内才能与标题同行右对齐；
+        # ctrl 创建早于 row（层级更低会被 row 背景盖住），pack 后必须抬到最上层。
+        # 注意 Switch 是 Canvas 子类，tkraise 被覆盖为条目命令，须走 Tcl 原生 raise
+        ctrl.pack(in_=row, side="right", padx=(16, 0), anchor="n")
+        self.win.tk.call("raise", ctrl._w)
         tk.Frame(parent, bg=T.LINE, height=1).pack(fill="x", padx=32)
 
     # ---------- 分区内容 ----------
@@ -464,7 +468,7 @@ class SettingsWindow:
                  anchor="w").pack(anchor="w", pady=(1, 0))
         tk.Button(row, text="立即清空回收站", command=self.empty_trash,
                   relief="flat", bd=0, bg=T.DANGER, fg="#ffffff",
-                  activebackground="#d93b40", activeforeground="#ffffff",
+                  activebackground=T.DANGER_HOVER, activeforeground="#ffffff",
                   font=("Microsoft YaHei UI", 10), cursor="hand2",
                   padx=12, pady=6).pack(side="right", padx=(16, 0))
         tk.Frame(page, bg=T.LINE, height=1).pack(fill="x", padx=32)
