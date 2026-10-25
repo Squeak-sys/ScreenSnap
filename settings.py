@@ -70,7 +70,7 @@ class Seg(tk.Frame):
         for i, (text, val) in enumerate(self._choices):
             b = tk.Button(
                 self, text=text, relief="flat", bd=0, cursor="hand2",
-                padx=16, pady=4,
+                padx=6, pady=4,
                 font=("Microsoft YaHei UI", 11,
                       "bold" if val == value else "normal"),
                 bg=T.SURFACE if val == value else T.SURFACE_2,
@@ -394,6 +394,12 @@ class SettingsWindow:
                   self.format_var.get(), command=self.format_var.set)
         self._add_row(page, "保存格式",
                       "PNG 无损（推荐），JPG 体积更小", seg)
+        # 录屏帧率（从框选窗口迁移至设置页，默认 30）
+        self.record_fps_seg = Seg(
+            page, [("15", 15), ("25", 25), ("30", 30), ("60", 60)],
+            int(self.cfg.get("record_fps", 30)))
+        self._add_row(page, "录屏帧率",
+                      "录制视频的帧率：越高越流畅，文件体积也越大", self.record_fps_seg)
         # 保存位置
         save_root = self.cfg.get("save_root", "")
         row = tk.Frame(page, bg=T.SURFACE)
@@ -580,6 +586,7 @@ class SettingsWindow:
     def save_all(self):
         self.cfg["hotkey"] = self.hotkey_var.get().strip()
         self.cfg["save_format"] = self.format_var.get()
+        self.cfg["record_fps"] = int(self.record_fps_seg.value())
         self.cfg["auto_start"] = bool(self.auto_var.get())
         self.cfg["auto_copy"] = bool(self.auto_copy_var.get())
         self.cfg["trash_days"] = int(self.trash_days_stepper.value())

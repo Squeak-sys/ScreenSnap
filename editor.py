@@ -166,6 +166,46 @@ def _fallback_icons():
     d.polygon([(9, 4), (13, 4), (11, 8)], fill=INK)
     icons["record"] = ImageTk.PhotoImage(img)
 
+    # 复制：线性图标（后页开口 + 前页圆角矩形，与 design/icons/svg/复制.svg 一致）
+    img, d = _new()
+    d.rounded_rectangle([3.33, 3.33, 13.33, 13.33], radius=1.67,
+                        outline=INK, width=2)
+    d.rectangle([3.2, 12.6, 13.9, 14.6], fill=(0, 0, 0, 0))
+    d.rectangle([12.9, 3.2, 15.2, 14.6], fill=(0, 0, 0, 0))
+    d.rounded_rectangle([6.67, 6.67, 16.67, 16.67], radius=1.67,
+                        outline=INK, width=2)
+    icons["copy"] = ImageTk.PhotoImage(img)
+
+    # 另存为：软盘
+    img, d = _new()
+    d.rounded_rectangle([3, 4, 17, 17], radius=2, outline=INK, width=2)
+    d.rounded_rectangle([5, 6, 11, 9], radius=1, outline=INK, width=2)
+    d.rounded_rectangle([10, 12, 15, 16], radius=1, outline=INK, width=2)
+    icons["save"] = ImageTk.PhotoImage(img)
+
+    # 保存到历史库：文件夹 + 加号
+    img, d = _new()
+    d.polygon([(3, 7), (17, 7), (15, 10), (5, 10)], outline=INK)
+    d.rounded_rectangle([3, 8, 17, 17], radius=1, outline=INK, width=2)
+    d.line([(10, 11), (10, 14)], fill=INK, width=2)
+    d.line([(8, 12.5), (12, 12.5)], fill=INK, width=2)
+    icons["save_gallery"] = ImageTk.PhotoImage(img)
+
+    # 删除：垃圾桶（盖线 + 提手 + 开口桶身，与 design/icons/svg/删除.svg 一致）
+    img, d = _new()
+    d.line([(3.33, 5.83), (16.67, 5.83)], fill=INK, width=2)
+    d.line([(7.5, 5.83), (7.5, 4.17), (12.5, 4.17), (12.5, 5.83)],
+           fill=INK, width=2)
+    d.line([(5.0, 5.83), (5.83, 16.67), (14.17, 16.67), (15.0, 5.83)],
+           fill=INK, width=2)
+    icons["delete"] = ImageTk.PhotoImage(img)
+
+    # 关闭：X
+    img, d = _new()
+    d.line([(5, 5), (15, 15)], fill=INK, width=3)
+    d.line([(15, 5), (5, 15)], fill=INK, width=3)
+    icons["close"] = ImageTk.PhotoImage(img)
+
     return icons
 
 
@@ -178,7 +218,7 @@ def _icon_dir():
                         "assets", "icons")
 
 
-# 图标键 -> 资源文件名（40x40 PNG）
+# 图标键 -> 资源文件名（20x20 PNG）
 _PNG_NAMES = {
     TOOL_RECT: "tool_rect.png",
     TOOL_ELLIPSE: "tool_ellipse.png",
@@ -190,122 +230,75 @@ _PNG_NAMES = {
     "undo": "tool_undo.png",
     "pin": "tool_pin.png",
     "record": "tool_record.png",
+    "copy": "tool_copy.png",
+    "save": "tool_save.png",
+    "save_gallery": "tool_save_gallery.png",
+    "delete": "tool_delete.png",
+    "close": "tool_close.png",
 }
 
 
-def _tint(img, color):
-    """保留 alpha，将非透明像素统一替换为指定颜色（图标着色）。"""
-    img = img.convert("RGBA")
-    px = img.load()
-    r, g, b = color
-    for y in range(img.height):
-        for x in range(img.width):
-            a = px[x, y][3]
-            if a:
-                px[x, y] = (r, g, b, a)
-    return img
 
 
-def _harden_alpha(img, ink=(74, 74, 74)):
-    """抗锯齿稀释修复：alpha>0 的像素统一提升为实心深灰（alpha=255），
-    消除 40x40 PNG 经 LANCZOS 缩放后产生的半透明稀释——半透明像素在
-    transparentcolor 窗口下几乎变透明导致图标淡/断裂。"""
-    img = img.convert("RGBA")
-    px = img.load()
-    for y in range(img.height):
-        for x in range(img.width):
-            if px[x, y][3] > 0:
-                px[x, y] = (ink[0], ink[1], ink[2], 255)
-    return img
 
-
-def _badge_font():
-    """快捷键角标数字字体（Windows Segoe UI，缺省时用 PIL 默认字体）。"""
-    try:
-        return ImageFont.truetype("C:/Windows/Fonts/segoeui.ttf", 11)
-    except Exception:
-        return ImageFont.load_default()
-
-
-def _draw_badge(img, digit):
-    """在 40x40 图标右下角绘制快捷键数字角标（白底小方块 + 细边框 + 数字）。
-    纯白不透明工具栏下 Canvas 装饰会被按钮窗口遮挡，角标必须合成进图标。"""
-    img = img.convert("RGBA")
-    d = ImageDraw.Draw(img)
-    d.rectangle([29, 29, 39, 38], fill=T.TOOLBAR,
-                outline=T.LINE, width=1)
-    d.text((34, 33.5), str(digit), fill=T.INK_3,
-           font=_badge_font(), anchor="mm")
-    return img
-
-
-def _make_color_dot_icon(rgb, size=40):
+def _make_color_dot_icon(rgb, size=24):
     """颜色按钮图标：外圈灰线 + 白色内环 + 当前色圆点（模拟原 Canvas 圆点视觉）。"""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     c = size // 2
-    d.ellipse([c - 14, c - 14, c + 14, c + 14], outline=T.LINE, width=1)
-    d.ellipse([c - 11, c - 11, c + 11, c + 11], outline="#ffffff", width=2)
-    d.ellipse([c - 8, c - 8, c + 8, c + 8],
+    d.ellipse([c - 11, c - 11, c + 11, c + 11], outline=T.LINE, width=2)
+    d.ellipse([c - 8, c - 8, c + 8, c + 8], outline="#ffffff", width=2)
+    d.ellipse([c - 5, c - 5, c + 5, c + 5],
               fill=(rgb[0], rgb[1], rgb[2], 255))
     return img
 
 
-def _make_width_icon(size=40):
-    """线宽按钮图标：三条横线（1/2/3 磅，模拟原 Canvas 三线视觉）。"""
+def _make_width_icon(size=24):
+    """线宽按钮图标：优先加载 assets/icons/tool_width.png（原图直接显示，
+    不缩放/不改色/不贴画布），缺失时回退为 PIL 绘制的三条横线（1/2/3 磅）。"""
+    try:
+        p = os.path.join(_icon_dir(), "tool_width.png")
+        if os.path.exists(p):
+            return Image.open(p).convert("RGBA")
+    except Exception:
+        pass
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    for y, w in ((9, 2), (19, 3), (29, 4)):
-        d.line([(8, y), (32, y)], fill=(28, 36, 48, 255), width=w)
+    for y, w in ((4, 2), (10, 3), (16, 4)):
+        d.line([(4, y), (20, y)], fill=(28, 36, 48, 255), width=w)
     return img
 
 
 def _make_tool_icons():
-    """生成两套工具栏图标：常态深灰（INK）+ 选中主色（ACCENT）。
-    加载 assets/icons 下 40x40 高清 PNG 以 40x40 显示（高分辨率源图缩放，
-    清晰且与旧版尺寸一致）；工具图标右下角合成快捷键数字角标。
-    返回 (icons, icons_accent)。"""
+    """工具栏图标：原图原样显示（所见即所得）。
+    直接 Image.open 加载 assets/icons 下的 PNG——不缩放、不改色、
+    不做 alpha 硬化/居中贴画布；按钮 24x24 由 Tk 自动居中；
+    选中/悬浮态仅由按钮圆底表达，图标永不染色。返回 {key: PhotoImage}。"""
     icons = {}
-    icons_accent = {}
     fallback = None
     d = _icon_dir()
-    for idx, (key, fname) in enumerate(_PNG_NAMES.items()):
-        tool_badge = idx < 7  # 前 7 枚为工具（rect..arrow），叠加数字角标
+    for key, fname in _PNG_NAMES.items():
         path = os.path.join(d, fname)
         if os.path.exists(path):
-            # 直接使用最小档 20px 原图 1:1（不做缩放/放大）；40px 原图（tool_line）直接用。
-            # 小图居中贴到 40px 按钮画布，角标仍画在画布右下角。
-            img = Image.open(path).convert("RGBA")
-            if img.size != (40, 40):
-                canvas = Image.new("RGBA", (40, 40), (0, 0, 0, 0))
-                canvas.paste(img, (10, 10), img)
-                img = canvas
-            img = _harden_alpha(img)
-            if tool_badge:
-                img_a = _tint(img, (47, 109, 246))
-                img = _draw_badge(img, idx + 1)
-                img_a = _draw_badge(img_a, idx + 1)
-            else:
-                img_a = _tint(img, (47, 109, 246))
-            icons[key] = ImageTk.PhotoImage(img)
-            icons_accent[key] = ImageTk.PhotoImage(img_a)
+            icons[key] = ImageTk.PhotoImage(
+                Image.open(path).convert("RGBA"))
         else:
             if fallback is None:
                 fallback = _fallback_icons()
             icons[key] = fallback[key]
-            icons_accent[key] = fallback[key]
-    return icons, icons_accent
+    return icons
 
 
 class ToolbarWindow:
-    """独立悬浮工具栏：高 52px，纯白不透明填充（#FBFBFC），无 transparentcolor 透明机制。
+    """独立悬浮工具栏：高 32px（贴合 24px 按钮，上下各 4px 留白），圆角窗口（SetWindowRgn 裁剪），
+    灰白不透明填充（#DEDFE1），无 transparentcolor 透明机制。
     工具按钮选中 = accent-soft 圆底 + accent 图标，悬浮 = surface-3；
-    快捷键角标（1-6）右下角常显；完成 = 绿色实底胶囊 + ✓（唯一强主操作）。"""
+    完成 = 绿色实底胶囊 + ✓（唯一强主操作）。"""
 
     def __init__(self, editor, root, topmost=True, master=None):
         self.editor = editor
         self.tool_h = tool_h = T.TOOLBAR_H
-        # 纯白不透明填充：窗口整体为 #FBFBFC 实心块，不使用 transparentcolor 透明机制
+        # 灰白不透明填充：窗口整体为 #DEDFE1 实心块，不使用 transparentcolor 透明机制
         self._bar_bg = T.TOOLBAR
         # master 为所属窗口时，工具栏成为其 owned 子窗口
         self.win = tk.Toplevel(master if master is not None else root)
@@ -314,22 +307,21 @@ class ToolbarWindow:
             self.win.attributes("-topmost", True)
         self.win.configure(bg=self._bar_bg)
 
-        self._icons, self._icons_accent = _make_tool_icons()
+        self._icons = _make_tool_icons()
         # Canvas 容器：纯白背景承载全部按钮（create_window 挂载）
         self.canvas = tk.Canvas(self.win, bg=self._bar_bg,
                                 highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
 
-        btn_h = T.TOOL_BTN          # 40：圆形命中区
-        cy = tool_h // 2            # 26：按钮中心 y
-        gap = 2                     # 按钮间间距
+        btn_h = T.TOOL_BTN          # 24：圆形命中区
+        cy = tool_h // 2            # 16：按钮中心 y
+        gap = 0                     # 按钮间间距（紧贴排列）
         self._btn_bgs = {}          # button -> Canvas 高亮底 oval id
         self._btn_tool = {}         # button -> tool（非工具按钮为 None）
         self._tool_btns = {}
-        self._normal_icons = {}
-        self._active_icons = {}
         self._color_palette = None
         self._width_menu = None
+        self._dismiss_bound = False
 
         def _tbtn(image=None, **kw):
             kw.setdefault("relief", "flat")
@@ -356,26 +348,25 @@ class ToolbarWindow:
                 cx + btn_h // 2, cy + btn_h // 2, fill="", outline="")
             b = _tbtn(self._icons[tool],
                       command=lambda t=tool: self.editor.set_tool(t))
-            # 按钮 window 创建，完整 40x40 区域可点击；快捷键角标已合成进图标
+            # 按钮 window 创建，完整 24x24 区域可点击；快捷键角标已合成进图标
             self.canvas.create_window(cx, cy, width=btn_h, height=btn_h, window=b)
             self._tool_btns[tool] = b
             self._btn_bgs[b] = oval
             self._btn_tool[b] = tool
-            self._normal_icons[tool] = self._icons[tool]
-            self._active_icons[tool] = self._icons_accent[tool]
             _hover_bind(b, oval, tool)
             Tooltip(b, f"{TOOL_NAMES[tool]}（快捷键 {i}）")
             x += btn_h + gap
 
         # ---- 分隔线 ----
-        x += 6
+        x += 4
         self.canvas.create_line(x, cy - 12, x, cy + 12, fill=T.LINE, width=1)
-        x += 6
+        x += 4
 
         # ---- 分区B：颜色圆点（展开色板 10 色 + 自定义） ----
         self._color_cx = x + btn_h // 2
         self._color_oval = self.canvas.create_oval(
-            self._color_cx - 20, cy - 20, self._color_cx + 20, cy + 20,
+            self._color_cx - btn_h // 2, cy - btn_h // 2,
+            self._color_cx + btn_h // 2, cy + btn_h // 2,
             fill="", outline="")
         self._color_rgb = tuple(self.editor.color)
         self._color_dot_img = ImageTk.PhotoImage(
@@ -393,7 +384,8 @@ class ToolbarWindow:
         # ---- 分区C：线宽（三线图标，展开预设） ----
         self._width_cx = x + btn_h // 2
         self._width_oval = self.canvas.create_oval(
-            self._width_cx - 20, cy - 20, self._width_cx + 20, cy + 20,
+            self._width_cx - btn_h // 2, cy - btn_h // 2,
+            self._width_cx + btn_h // 2, cy + btn_h // 2,
             fill="", outline="")
         self._width_img = ImageTk.PhotoImage(_make_width_icon())
         self._width_btn = _tbtn(self._width_img, command=self._open_width_menu)
@@ -407,13 +399,14 @@ class ToolbarWindow:
         x += btn_h + gap
 
         # ---- 分隔线 ----
-        x += 6
+        x += 4
         self.canvas.create_line(x, cy - 12, x, cy + 12, fill=T.LINE, width=1)
-        x += 6
+        x += 4
 
         # ---- 分区D：撤销 ----
         cx = x + btn_h // 2
-        oval = self.canvas.create_oval(cx - 20, cy - 20, cx + 20, cy + 20,
+        oval = self.canvas.create_oval(cx - btn_h // 2, cy - btn_h // 2,
+                                       cx + btn_h // 2, cy + btn_h // 2,
                                        fill="", outline="")
         undo_b = _tbtn(self._icons["undo"], command=self.editor.undo)
         self.canvas.create_window(cx, cy, width=btn_h, height=btn_h, window=undo_b)
@@ -425,21 +418,12 @@ class ToolbarWindow:
 
         # ---- 分区E：录制（红点） ----
         cx = x + btn_h // 2
-        oval = self.canvas.create_oval(cx - 20, cy - 20, cx + 20, cy + 20,
+        oval = self.canvas.create_oval(cx - btn_h // 2, cy - btn_h // 2,
+                                       cx + btn_h // 2, cy + btn_h // 2,
                                        fill="", outline="")
         try:
             rec_img = Image.open(os.path.join(_icon_dir(), "tool_record.png"))
-            rec_img = rec_img.convert("RGBA")
-            if rec_img.size != (40, 40):
-                rec_canvas = Image.new("RGBA", (40, 40), (0, 0, 0, 0))
-                rec_canvas.paste(rec_img, (10, 10), rec_img)
-                rec_img = rec_canvas
-            rec_img = _harden_alpha(rec_img)
-            rec_img = _tint(rec_img, (229, 72, 77))
-            # 录制红点角标合成进图标右上（按钮窗口内 Canvas 装饰不可见）
-            ImageDraw.Draw(rec_img).ellipse(
-                [30, 8, 34, 12], fill=(229, 72, 77, 255))
-            self._rec_img = ImageTk.PhotoImage(rec_img)
+            self._rec_img = ImageTk.PhotoImage(rec_img.convert("RGBA"))
         except Exception:
             self._rec_img = self._icons["record"]
         rec_b = _tbtn(self._rec_img, command=self.editor.request_record)
@@ -452,7 +436,8 @@ class ToolbarWindow:
 
         # ---- 分区F：贴图（钉在屏幕） ----
         cx = x + btn_h // 2
-        oval = self.canvas.create_oval(cx - 20, cy - 20, cx + 20, cy + 20,
+        oval = self.canvas.create_oval(cx - btn_h // 2, cy - btn_h // 2,
+                                       cx + btn_h // 2, cy + btn_h // 2,
                                        fill="", outline="")
         pin_b = _tbtn(self._icons["pin"], command=self.editor.pin)
         self.canvas.create_window(cx, cy, width=btn_h, height=btn_h, window=pin_b)
@@ -460,32 +445,31 @@ class ToolbarWindow:
         self._btn_tool[pin_b] = None
         _hover_bind(pin_b, oval, None)
         Tooltip(pin_b, "贴图：钉在屏幕（不进历史库）")
-        x += btn_h + gap + 4
+        x += btn_h + gap + 2
 
-        # ---- 分区G：完成（绿色实底胶囊 + ✓，唯一强主操作） ----
-        done_w = 92
+        # ---- 分区G：完成（绿色实底圆角胶囊 + ✓，唯一强主操作） ----
+        done_w = 76
         done_cx = x + done_w // 2
         self._done_pill = self._round_rect(
-            self.canvas, done_cx - done_w // 2, cy - 20,
-            done_cx + done_w // 2, cy + 20, 20,
+            self.canvas, done_cx - done_w // 2, cy - 14,
+            done_cx + done_w // 2, cy + 14, 12,
             fill=T.SUCCESS, outline="")
-        done_b = tk.Button(self.win, text="✓ 完成",
-                           font=("Microsoft YaHei UI", 12, "bold"),
-                           fg="#ffffff", bg=T.SUCCESS,
-                           activebackground=T.SUCCESS_HOVER,
-                           relief="flat", bd=0, highlightthickness=0,
-                           cursor="hand2", command=self.editor.done)
-        self.canvas.create_window(done_cx, cy, width=done_w, height=btn_h,
-                                  window=done_b)
-        done_b.bind("<Enter>",
-                    lambda e: self.canvas.itemconfig(self._done_pill,
-                                                     fill=T.SUCCESS_HOVER),
-                    add="+")
-        done_b.bind("<Leave>",
-                    lambda e: self.canvas.itemconfig(self._done_pill,
-                                                     fill=T.SUCCESS),
-                    add="+")
-        Tooltip(done_b, "完成并复制（Enter）")
+        # 文字置 disabled：纯视觉不接收事件，鼠标点击穿透到下方圆角胶囊，
+        # 避免矩形按钮窗口盖住圆角（圆角由 Canvas polygon 完整呈现）
+        self._done_text = self.canvas.create_text(
+            done_cx, cy, text="✓ 完成",
+            font=("Microsoft YaHei UI", 12, "bold"),
+            fill="#ffffff", disabledfill="#ffffff", state="disabled")
+        self.canvas.tag_bind(self._done_pill, "<Button-1>",
+                             lambda e: self.editor.done())
+        self.canvas.tag_bind(self._done_pill, "<Enter>",
+                             lambda e: (self.canvas.itemconfig(
+                                 self._done_pill, fill=T.SUCCESS_HOVER),
+                                        self.canvas.configure(cursor="hand2")))
+        self.canvas.tag_bind(self._done_pill, "<Leave>",
+                             lambda e: (self.canvas.itemconfig(
+                                 self._done_pill, fill=T.SUCCESS),
+                                        self.canvas.configure(cursor="")))
         self.bar_w = done_cx + done_w // 2 + 10
 
         # 键盘事件转发（点击工具栏时焦点在工具栏窗口）
@@ -502,7 +486,20 @@ class ToolbarWindow:
                 b.bind("<Button-1>", lambda e: self.editor.win.focus_force(), add="+")
 
         self.win.geometry(f"{self.bar_w}x{tool_h}+0+0")
+        self._apply_round_region()
         self._highlight_tool()
+
+    def _apply_round_region(self, radius=10):
+        """工具栏窗口圆角：SetWindowRgn 圆角裁剪（保持纯白不透明填充，
+        四角裁掉露出背景，视觉为圆角白色工具条）。"""
+        try:
+            hwnd = self.win.winfo_id()
+            rgn = ctypes.windll.gdi32.CreateRoundRectRgn(
+                0, 0, self.bar_w, self.tool_h,
+                radius * 2, radius * 2)
+            ctypes.windll.user32.SetWindowRgn(hwnd, rgn, True)
+        except Exception:
+            pass
 
     def _btn_enter(self, oval, tool):
         """按钮悬浮：非选中态显示 surface-3 圆底。"""
@@ -519,18 +516,15 @@ class ToolbarWindow:
             self.canvas.itemconfig(oval, fill="")
 
     def _highlight_tool(self):
-        """选中工具 = accent-soft 圆底 + accent 图标；调整模式无激活工具。"""
+        """选中工具 = accent-soft 圆底，图标始终原样；调整模式无激活工具。"""
         for t, b in self._tool_btns.items():
             oval = self._btn_bgs[b]
             if self.editor.mode == MODE_ADJUST:
                 self.canvas.itemconfig(oval, fill="")
-                b.configure(image=self._normal_icons[t])
             elif t == self.editor.tool:
                 self.canvas.itemconfig(oval, fill=T.ACCENT_SOFT)
-                b.configure(image=self._active_icons[t])
             else:
                 self.canvas.itemconfig(oval, fill="")
-                b.configure(image=self._normal_icons[t])
 
     @staticmethod
     def _round_rect(cv, x1, y1, x2, y2, r, **kw):
@@ -554,32 +548,45 @@ class ToolbarWindow:
         if self._color_palette is not None:
             self._close_color_palette()
             return
+        self._close_width_menu()
+        self._ensure_dismiss_bindings()
         pal = tk.Toplevel(self.win)
         pal.overrideredirect(True)
         pal.attributes("-topmost", True)
-        # 色板定位：按钮上方居中；越界则放下方
-        ph = 2 * 34 + 34 + 12
-        bx = self._color_btn.winfo_rootx() - 75
-        by = self._color_btn.winfo_rooty() - ph
-        if by < 0:
-            by = self._color_btn.winfo_rooty() + self._color_btn.winfo_height() + 6
+        # 色板定位：按钮下方居中；下方没空间则放上方（小圆点卡片，高约 74px）
+        ph = 2 * 20 + 24 + 12
+        bw = 5 * 22
+        bx = (self._color_btn.winfo_rootx()
+              + self._color_btn.winfo_width() // 2 - bw // 2)
+        by = (self._color_btn.winfo_rooty()
+              + self._color_btn.winfo_height() + 6)
+        if by + ph > self.win.winfo_screenheight():
+            by = self._color_btn.winfo_rooty() - ph
         pal.geometry(f"+{max(0, bx)}+{max(0, by)}")
         pal.configure(bg="#ffffff", highlightthickness=1,
                       highlightbackground=T.LINE)
+        # 每个颜色一颗小圆点：12px 纯色圆形 + 1px 浅描边，卡片式浅灰圆角底
         for i, (name, rgb) in enumerate(COLORS.items()):
-            hexc = self._hex_rgb(rgb)
-            b = tk.Button(pal, width=3, relief="flat", bd=0, bg=hexc,
-                          activebackground=hexc, cursor="hand2",
+            dot = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+            ImageDraw.Draw(dot).ellipse(
+                (0, 0, 11, 11), fill=tuple(rgb) + (255,),
+                outline="#D9DDE3", width=1)
+            img = ImageTk.PhotoImage(dot)
+            b = tk.Button(pal, image=img, width=0, height=0, relief="flat",
+                          bd=0, bg=T.SURFACE_3, activebackground=T.ACCENT_SOFT,
+                          cursor="hand2",
                           command=lambda c=rgb: self.editor.set_color(c))
-            b.grid(row=i // 5, column=i % 5, padx=4, pady=4)
+            b.img = img
+            b.grid(row=i // 5, column=i % 5, padx=2, pady=2)
             Tooltip(b, name)
-        cus = tk.Button(pal, text="…", font=("Microsoft YaHei UI", 13, "bold"),
+        cus = tk.Button(pal, text="…", font=("Microsoft YaHei UI", 11, "bold"),
                         relief="flat", bd=0, fg=T.INK_2, bg="#ffffff",
                         activebackground=T.SURFACE_3, cursor="hand2",
                         command=self._pick_custom_color)
-        cus.grid(row=2, column=0, padx=4, pady=4)
+        cus.grid(row=2, column=0, padx=2, pady=2)
         self._color_palette = pal
         pal.bind("<FocusOut>", lambda e: self._close_color_palette())
+        pal.bind("<Escape>", lambda e: self._close_color_palette())
 
     def _pick_custom_color(self):
         self._close_color_palette()
@@ -602,56 +609,90 @@ class ToolbarWindow:
         self._width_name = name
 
     def _open_width_menu(self):
+        if self._width_menu is not None:
+            self._close_width_menu()
+            return
         self._close_color_palette()
-        menu_win = tk.Toplevel(self.win)
-        menu_win.overrideredirect(True)
-        menu_win.attributes("-topmost", True)
-        rows = len(WIDTHS)
-        bx = self._width_btn.winfo_rootx() - 24
-        by = self._width_btn.winfo_rooty() + self._width_btn.winfo_height() + 6
-        if by + rows * 28 > self.win.winfo_screenheight():
-            by = self._width_btn.winfo_rooty() - rows * 28 - 6
-        menu_win.geometry(f"+{max(0, bx)}+{max(0, by)}")
-        menu_win.configure(bg="#ffffff", highlightthickness=1,
-                           highlightbackground=T.LINE)
-        self._width_menu = menu_win
+        self._ensure_dismiss_bindings()
+        menu = tk.Toplevel(self.win)
+        menu.overrideredirect(True)
+        menu.attributes("-topmost", True)
+        # 定位：按钮下方；下方没空间则放上方（紧凑行式，高约 108px）
+        mh = len(WIDTHS) * 20 + 8
+        bx = self._width_btn.winfo_rootx()
+        by = (self._width_btn.winfo_rooty()
+              + self._width_btn.winfo_height() + 6)
+        if by + mh > self.win.winfo_screenheight():
+            by = self._width_btn.winfo_rooty() - mh
+        menu.geometry(f"+{max(0, bx)}+{max(0, by)}")
+        menu.configure(bg="#ffffff", highlightthickness=1,
+                       highlightbackground=T.LINE)
+        cur = self.editor.width
+        # 每行：按实际像素粗细画一条线 + 名称 + px 标注，整行可点击
         for i, (name, w) in enumerate(WIDTHS.items()):
-            row = tk.Frame(menu_win, bg="#ffffff", cursor="hand2")
-            row.grid(row=i, column=0, sticky="ew", padx=2, pady=1)
-            cv = tk.Canvas(row, width=52, height=22, bg="#ffffff",
-                           highlightthickness=0, cursor="hand2")
-            cv.pack(side="left")
-            cv.create_line(8, 7, 42, 7, fill=T.INK_2, width=1.2)
-            cv.create_line(8, 12, 42, 12, fill=T.INK_2, width=2.2)
-            cv.create_line(8, 17, 42, 17, fill=T.INK_2, width=3.4)
-            lb = tk.Label(row, text=f"{name}（{w}px）", bg="#ffffff",
-                          fg=T.INK, font=("Microsoft YaHei UI", 10),
-                          cursor="hand2")
-            lb.pack(side="left", padx=6)
+            row = tk.Frame(menu, bg="#ffffff", cursor="hand2")
+            row.grid(row=i, column=0, sticky="ew", padx=3, pady=1)
+            cv = tk.Canvas(row, width=60, height=16, bg="#ffffff",
+                           highlightthickness=0)
+            cv.grid(row=0, column=0, padx=(2, 1), pady=2)
+            line_h = 8  # 中线：上下留空避免粗线溢出
+            cv.create_line(2, line_h, 58, line_h, fill=T.INK_2, width=w)
+            sel = "●" if w == cur else " "
+            lab = tk.Label(row, text=f"{sel} {name}（{w}px）",
+                           bg="#ffffff", fg=T.INK_2,
+                           font=("Microsoft YaHei UI", 8))
+            lab.grid(row=0, column=1, sticky="w")
 
             def _pick(v=w, n=name):
-                try:
-                    menu_win.destroy()
-                except Exception:
-                    pass
-                self._width_menu = None
                 self.editor.set_width(v, n)
+                self._close_width_menu()
 
-            def _enter(_e=None, r=row, l=lb):
+            def _enter(_e=None, r=row, c=cv, l=lab):
                 r.configure(bg=T.ACCENT_SOFT)
+                c.configure(bg=T.ACCENT_SOFT)
                 l.configure(bg=T.ACCENT_SOFT)
 
-            def _leave(_e=None, r=row, l=lb):
+            def _leave(_e=None, r=row, c=cv, l=lab):
                 r.configure(bg="#ffffff")
+                c.configure(bg="#ffffff")
                 l.configure(bg="#ffffff")
 
-            for wid in (row, cv, lb):
+            for wid in (row, cv, lab):
                 wid.bind("<Button-1>", lambda e, f=_pick: f())
                 wid.bind("<Enter>", _enter)
                 wid.bind("<Leave>", _leave)
-            if name == self._width_name:
+            if w == cur:
                 _enter()
-        menu_win.bind("<FocusOut>", lambda e: self._close_width_menu())
+        self._width_menu = menu
+        menu.bind("<FocusOut>", lambda e: self._close_width_menu())
+        menu.bind("<Escape>", lambda e: self._close_width_menu())
+
+    def _ensure_dismiss_bindings(self):
+        """首次打开弹窗前绑定：主窗口任意鼠标/键盘/滚轮操作时自动关闭弹窗。"""
+        if getattr(self, "_dismiss_bound", False):
+            return
+        root = self.win.winfo_toplevel()
+        root.bind_all("<Button-1>", self._dismiss_popups, add="+")
+        root.bind_all("<Key>", self._dismiss_popups, add="+")
+        root.bind_all("<MouseWheel>", self._dismiss_popups, add="+")
+        self._dismiss_bound = True
+
+    def _dismiss_popups(self, event=None):
+        """点击/按键/滚轮发生在弹窗外部时，关闭颜色与线宽弹窗。"""
+        if self._color_palette is None and self._width_menu is None:
+            return
+        w = event.widget if event is not None else None
+        top = None
+        if w is not None:
+            try:
+                top = w.winfo_toplevel()
+            except Exception:
+                top = None
+        if top is not None and (top is self._color_palette
+                                or top is self._width_menu):
+            return  # 弹窗内部操作不在此关闭（按钮命令自行处理）
+        self._close_color_palette()
+        self._close_width_menu()
 
     def _close_width_menu(self):
         if self._width_menu is not None:
@@ -735,7 +776,7 @@ class EditorWindow:
 
         # ---------- 画布：尺寸=当前工作图尺寸（大图可滚动） ----------
         self.canvas = tk.Canvas(self.win, width=self.w,
-                                height=min(self.h, self.sh - tool_h),
+                                height=min(self.h, self.sh - self.vy),
                                 highlightthickness=0, cursor="crosshair", bg=T.CANVAS)
         self.canvas.pack(fill="both", expand=True)
         self._setup_scrollbar()
@@ -838,14 +879,15 @@ class EditorWindow:
             tx = max(self.vx, self.sw - bar_w)
         # 垂直排布：先试窗口正下方外侧，再试正上方外侧；
         # 上下都放不下（窗口几乎占满屏幕）时，选遮挡图片面积最小的一侧
-        ty = win_y + win_h
+        gap = 5                          # 工具栏与选区框之间预留间隙，方便调整选区边缘
+        ty = win_y + win_h + gap
         if ty + self.tool_h > self.sh:
-            ty_up = win_y - self.tool_h
+            ty_up = win_y - self.tool_h - gap
             if ty_up >= self.vy:
                 ty = ty_up
             else:
-                over_down = win_y + win_h + self.tool_h - self.sh   # 放下方会遮挡的像素数
-                over_up = self.tool_h - (win_y - self.vy)           # 放上方会遮挡的像素数
+                over_down = win_y + win_h + gap + self.tool_h - self.sh   # 放下方会遮挡的像素数
+                over_up = gap + self.tool_h - (win_y - self.vy)           # 放上方会遮挡的像素数
                 ty = ty_up if over_up <= over_down else (self.sh - self.tool_h)
         ty = max(self.vy, min(ty, self.sh - self.tool_h))
         self.toolbar.win.geometry(f"{bar_w}x{self.tool_h}+{tx}+{ty}")
@@ -866,11 +908,11 @@ class EditorWindow:
         self.canvas.create_image(0, 0, image=self.photo, anchor="nw")
         # 文字层：未合成前以透明图层形式预览（可拖动/双击重编辑）
         for obj in self._text_objs:
-            layer, off = self._render_text_img(obj)
+            layer, offx, offy = self._render_text_img(obj)
             obj["photo"] = ImageTk.PhotoImage(layer)
             obj["item"] = self.canvas.create_image(
-                obj["x"] - off, obj["y"] - off, image=obj["photo"], anchor="nw",
-                tags=("textitem",))
+                obj["x"] - offx, obj["y"] - offy, image=obj["photo"],
+                anchor="nw", tags=("textitem",))
         # 调整模式：选区红框+手柄；标注模式：红框包裹工作图（与贴图同色同宽）
         if self.mode == MODE_ADJUST:
             self._draw_adjust_overlay()
@@ -879,7 +921,11 @@ class EditorWindow:
                                          outline=T.DANGER, width=2)
 
     def _render_text_img(self, obj):
-        """将单个文字对象渲染为透明图层（含白描边），返回 (RGBA图, 左上留白)。"""
+        """将单个文字对象渲染为透明图层（含白描边），返回 (RGBA图, 左上留白x, 左上留白y)。
+
+        支持 obj.get("angle") 旋转：expand 围绕中心旋转后，原锚点 (3,3) 按中心映射
+        换算到新图层中的坐标作为新留白，保证旋转后文字定位与画布预览一致。
+        """
         font = _load_font(obj["font_size"])
         tmp = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
         bbox = ImageDraw.Draw(tmp).textbbox((0, 0), obj["txt"], font=font,
@@ -891,18 +937,29 @@ class EditorWindow:
         d.text((3 - bbox[0], 3 - bbox[1]), obj["txt"], font=font,
                fill=tuple(obj["color"]) + (255,),
                stroke_width=2, stroke_fill=(255, 255, 255, 255))
-        return layer, 3
+        angle = float(obj.get("angle", 0) or 0) % 360
+        if abs(angle) < 0.01:
+            return layer, 3, 3
+        rot = layer.rotate(angle, expand=True, resample=Image.BICUBIC)
+        w, h = layer.size
+        w2, h2 = rot.size
+        rad = math.radians(angle)
+        # 原锚点 (3,3) 相对旋转中心 (w/2, h/2) 旋转后，映射到新图层
+        px, py = 3 - w / 2.0, 3 - h / 2.0
+        nx = px * math.cos(rad) - py * math.sin(rad)
+        ny = px * math.sin(rad) + py * math.cos(rad)
+        return rot, w2 / 2.0 + nx, h2 / 2.0 + ny
 
     def _flatten_texts(self):
-        """完成/盯住前把文字对象合成进图片。"""
+        """完成/盯住前把文字对象合成进图片（支持旋转，位置与画布预览一致）。"""
         if not self._text_objs:
             return
-        draw = ImageDraw.Draw(self.img)
+        base = self.img.convert("RGBA")
         for obj in self._text_objs:
-            font = _load_font(obj["font_size"])
-            draw.text((obj["x"], obj["y"]), obj["txt"], font=font,
-                      fill=tuple(obj["color"]),
-                      stroke_width=2, stroke_fill=(255, 255, 255))
+            layer, ox, oy = self._render_text_img(obj)
+            base.alpha_composite(layer,
+                                 (int(obj["x"] - ox), int(obj["y"] - oy)))
+        self.img = base.convert(self.img.mode)
 
     def _text_at(self, x, y):
         """命中检测：返回坐标处的文字对象（后添加的优先）。"""

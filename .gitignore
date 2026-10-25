@@ -1,0 +1,22 @@
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 临时与日志
+temp/
+shots/
+*.log
+build_err*.txt
+err.txt
+out.txt
+pyi_*.log
+
+# 系统
+Thumbs.db
+.DS_Store

@@ -11,6 +11,9 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 
+from PIL import Image, ImageDraw, ImageTk
+
+import ui_theme as T
 from capture import virtual_screen
 
 # ---------- ffmpeg 路径（惰性获取，取不到时友好报错） ----------
@@ -100,8 +103,17 @@ class RecordRegionWindow:
             self.canvas.create_rectangle(0, 0, self.vw, self.vh,
                                          fill="#000000", outline="")
         tip = "拖拽=框选录制区域  Enter/双击=确定  Esc=取消"
-        self.canvas.create_text(self.vw - 12, 18, text=tip, fill="#ffffff",
-                                anchor="e", font=("Microsoft YaHei UI", 11))
+        # 右上角深色圆角提示条（半透明，不遮内容）
+        tip_w, tip_h = 452, 30
+        tip_x = self.vw - tip_w - 14
+        tip_y = 14
+        _cv_round_rect(self.canvas, tip_x, tip_y, tip_x + tip_w, tip_y + tip_h,
+                       15, fill="#1C2430CC", outline="#ffffff22")
+        self.canvas.create_text(tip_x + tip_w / 2, tip_y + tip_h / 2,
+                                text=tip, fill="#ffffff", anchor="center",
+                                font=("Microsoft YaHei UI", 10))
+
+        # 帧率已迁移至设置页（record_fps），框选窗口不再提供帧率切换
 
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
@@ -182,7 +194,7 @@ class ScreenRecorder:
         self._log_path = None
         self._out_path = None
 
-    def start(self, rect, out_path):
+    def start(self, rect, out_path, fps=15):
         left, top, w, h = rect
         w, h = int(w), int(h)
         # libx264/yuv420p 要求宽高均为偶数，奇数尺寸会编码失败导致输出 0 字节
@@ -196,7 +208,7 @@ class ScreenRecorder:
         if not exe:
             raise RuntimeError(
                 "未找到 ffmpeg，请先安装依赖：pip install imageio-ffmpeg")
-        cmd = [exe, "-f", "gdigrab", "-framerate", "15",
+        cmd = [exe, "-f", "gdigrab", "-framerate", str(fps),
                "-offset_x", str(int(left)), "-offset_y", str(int(top)),
                "-video_size", f"{w}x{h}",
                "-i", "desktop",
@@ -283,27 +295,38 @@ class RecStatusBar:
         self.win.withdraw()
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
-        self.win.configure(bg="#1f1f1f")
+        self.win.configure(bg=T.INK)
 
-        frame = tk.Frame(self.win, bg="#1f1f1f")
+        frame = tk.Frame(self.win, bg=T.INK)
         frame.pack(padx=8, pady=4)
-        tk.Label(frame, text="●", fg="#e81123", bg="#1f1f1f",
+        tk.Label(frame, text="●", fg=T.DANGER, bg=T.INK,
                  font=("Microsoft YaHei UI", 10)).pack(side="left", padx=(0, 6))
         self.time_lbl = tk.Label(frame, text="00:00", fg="#ffffff",
-                                 bg="#1f1f1f", font=("Consolas", 11, "bold"))
+                                 bg=T.INK, font=("Consolas", 11, "bold"))
         self.time_lbl.pack(side="left", padx=(0, 10))
-        stop_b = tk.Button(frame, text="停止", command=self._stop,
-                           bg="#07c160", fg="white", relief="flat", bd=0,
-                           activebackground="#06ad56",
-                           activeforeground="white", highlightthickness=0,
-                           cursor="hand2", font=("Microsoft YaHei UI", 9))
+        # 停止/取消：圆角胶囊按钮（风格对齐截图页完成按钮，Pillow 绘制两态图）
+        stop_n, stop_h = T.make_pill_text("停止", T.SUCCESS, T.SUCCESS_HOVER,
+                                          font_size=9, padx=10, pady=4)
+        self._stop_n, self._stop_h = stop_n, stop_h
+        stop_b = tk.Button(frame, image=stop_n, command=self._stop,
+                           bd=0, relief="flat", highlightthickness=0,
+                           cursor="hand2", bg=T.INK, activebackground=T.INK)
+        stop_b.img = stop_n
+        stop_b.config(width=stop_n.width(), height=stop_n.height())
         stop_b.pack(side="left", padx=(0, 4))
-        cancel_b = tk.Button(frame, text="取消", command=self._cancel,
-                             bg="#e5484d", fg="white", relief="flat", bd=0,
-                             activebackground="#d93b40",
-                             activeforeground="white", highlightthickness=0,
-                             cursor="hand2", font=("Microsoft YaHei UI", 9))
+        stop_b.bind("<Enter>", lambda e: stop_b.configure(image=stop_h))
+        stop_b.bind("<Leave>", lambda e: stop_b.configure(image=stop_n))
+        cancel_n, cancel_h = T.make_pill_text("取消", T.DANGER, T.DANGER_HOVER,
+                                              font_size=9, padx=10, pady=4)
+        self._cancel_n, self._cancel_h = cancel_n, cancel_h
+        cancel_b = tk.Button(frame, image=cancel_n, command=self._cancel,
+                             bd=0, relief="flat", highlightthickness=0,
+                             cursor="hand2", bg=T.INK, activebackground=T.INK)
+        cancel_b.img = cancel_n
+        cancel_b.config(width=cancel_n.width(), height=cancel_n.height())
         cancel_b.pack(side="left")
+        cancel_b.bind("<Enter>", lambda e: cancel_b.configure(image=cancel_h))
+        cancel_b.bind("<Leave>", lambda e: cancel_b.configure(image=cancel_n))
         self.win.bind("<Escape>", lambda e: self._stop())
 
         self._place()
@@ -327,7 +350,7 @@ class RecStatusBar:
         y = top - 44
         if y < 0:
             y = top + 8  # 录制框贴屏幕顶端时改放框内顶部
-        self.win.geometry(f"+{cx - 84}+{y}")
+        self.win.geometry(f"+{cx - 92}+{y}")
 
     def _tick(self):
         if self._stopped:
@@ -381,6 +404,13 @@ def _exclude_from_capture(win):
         ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x11)
     except Exception:
         pass
+
+
+def _cv_round_rect(cv, x1, y1, x2, y2, r, **kw):
+    """在 Canvas 上绘制圆角矩形（smooth polygon 经典做法）。"""
+    pts = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
+           x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
+    return cv.create_polygon(pts, smooth=True, **kw)
 
 
 class RecordRangeOverlay:
@@ -449,13 +479,13 @@ class RecCountdown:
         self.canvas = tk.Canvas(self.win, width=size, height=size,
                                 highlightthickness=0, bg="#000000")
         self.canvas.pack(fill="both", expand=True)
-        # 半透明灰色圆（RGBA 背景色），直径 50 居中
+        # 深色半透明圆（RGBA 背景色），直径 50 居中
         try:
-            self.canvas.create_oval(7, 7, 57, 57, fill="#808080b3", outline="")
+            self.canvas.create_oval(7, 7, 57, 57, fill="#1C2430CC", outline="")
         except Exception:
-            self.canvas.create_oval(7, 7, 57, 57, fill="#808080", outline="")
+            self.canvas.create_oval(7, 7, 57, 57, fill="#1C2430", outline="")
         self.num_lbl = self.canvas.create_text(
-            32, 32, text=str(self._left), fill="#e81123",
+            32, 32, text=str(self._left), fill=T.DANGER,
             font=("Microsoft YaHei UI", 40, "bold"))
         self.win.bind("<Escape>", lambda e: self.cancel())
         _exclude_from_capture(self.win)
@@ -520,21 +550,25 @@ class RecCountdown:
 
 
 # ---------- 统一入口 ----------
-def start_record(root, storage, rect=None, on_record_started=None, on_finish=None):
+def start_record(root, storage, rect=None, on_record_started=None, on_finish=None, fps=30):
     """统一入口：区域选择 -> 保存路径 -> 启动录制 -> 状态条。
 
     rect 为 None 时弹出全屏框选窗口；传入 (left, top, width, height)
     虚拟屏幕坐标时跳过框选，直接按该范围录制。
+
+    fps：录制帧率（15/25/30/60 等），默认 30。帧率已从框选窗口迁移到
+    设置页（config.record_fps），调用方（main.App.start_record）负责从
+    设置读取并传入。
 
     on_finish(path)：正常结束传 mp4 路径；取消/失败传 None。
     所有回调均在 root（Tk 主线程）事件循环中执行。
     """
 
     def _region_ok(rect):
-        _begin_recording(root, storage, rect, on_record_started, on_finish)
+        _begin_recording(root, storage, rect, on_record_started, on_finish, fps)
 
     if rect is not None:
-        _begin_recording(root, storage, rect, on_record_started, on_finish)
+        _begin_recording(root, storage, rect, on_record_started, on_finish, fps)
         return
 
     RecordRegionWindow(
@@ -543,7 +577,7 @@ def start_record(root, storage, rect=None, on_record_started=None, on_finish=Non
         on_cancel=lambda: on_finish and on_finish(None))
 
 
-def _begin_recording(root, storage, rect, on_record_started, on_finish):
+def _begin_recording(root, storage, rect, on_record_started, on_finish, fps=30):
     """统一入口内部：红框 + 状态条（停止/取消按钮）与倒计时同时出现，倒计时结束后才正式开录。"""
     overlay = RecordRangeOverlay(root, rect)
     recorder = ScreenRecorder()
@@ -569,7 +603,7 @@ def _begin_recording(root, storage, rect, on_record_started, on_finish):
             return
         try:
             out_path = _plan_output_path(storage)
-            recorder.start(rect, out_path)
+            recorder.start(rect, out_path, fps)
         except Exception as e:
             overlay.close()
             bar.close()

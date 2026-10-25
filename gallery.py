@@ -6,6 +6,7 @@
 视野外销毁；平移/缩放直接更新视图偏移 (_origin_x/_origin_y) 与 _scale，无边界限制
 （可突破 ±80000，坐标无限扩展）。"""
 import os
+import time
 import ctypes
 from ctypes import wintypes
 import tkinter as tk
@@ -21,6 +22,12 @@ THUMB_W, THUMB_H = 180, 130
 
 
 class GalleryWindow:
+    _active = None  # 单例守卫：同时只允许一个历史库窗口
+
+    def _on_win_destroy(self, event):
+        if event.widget is self.win and GalleryWindow._active is self.win:
+            GalleryWindow._active = None
+
     # ---------- 多屏定位（与 settings.py 同一套逻辑） ----------
     @staticmethod
     def _monitor_rects():
@@ -62,6 +69,19 @@ class GalleryWindow:
         win.geometry(f"{w}x{h}")  # 兜底：交给系统默认定位
 
     def __init__(self, root, storage, config):
+        # 单例守卫：已有历史库窗口时仅激活并聚焦，不重复创建
+        if GalleryWindow._active is not None:
+            w = GalleryWindow._active
+            try:
+                if w.winfo_exists():
+                    w.deiconify()
+                    w.lift()
+                    w.focus_force()
+                    return
+            except Exception:
+                pass
+            GalleryWindow._active = None
+
         self.root = root
         self.storage = storage
         self.cfg = config
@@ -83,6 +103,8 @@ class GalleryWindow:
         self.win.title("ScreenSnap - 截图历史库")
         self.win.geometry("1100x720")
         self.win.minsize(760, 520)
+        GalleryWindow._active = self.win
+        self.win.bind("<Destroy>", self._on_win_destroy, add="+")
 
         top = tk.Frame(self.win, bg="#1f1f1f")
         top.pack(side="top", fill="x")
@@ -138,6 +160,7 @@ class GalleryWindow:
         self.win.bind("<Escape>", lambda e: self.win.destroy())
 
         self._layout()
+        self._focus_today()
 
     def _on_canvas_configure(self, event):
         """画布尺寸变化（窗口 resize / 首次显示）时同步视口。"""
@@ -566,6 +589,25 @@ class GalleryWindow:
         self._refresh_viewport(force=True)
         self._update_status()
 
+    def _focus_today(self):
+        """打开画布时定位视口：优先定位到今天日期所在分组，今天无内容则退化到
+        最近（日期最大）有内容的分组，均无内容时保持默认起点 (0,0)。"""
+        today = time.strftime("%Y-%m-%d")
+        target = None
+        for grp in self._groups:
+            if grp["date"] == today:
+                target = grp
+                break
+        if target is None and self._groups:
+            target = self._groups[-1]   # 分组按日期升序，末尾即最近
+        if target is None:
+            return
+        s = self._scale
+        # 分组左边缘、顶边缘对齐视口边距，保证打开即可看到该分组标题与内容
+        self._origin_x = self.margin - target["x"] * s
+        self._origin_y = self.margin - target["y"] * s
+        self._refresh_viewport(force=True)
+
     # ---------- 查看大图 ----------
     def _view_large(self, item):
         path = item.get("path")
@@ -649,7 +691,7 @@ class _EmbeddedToolbar(tk.Frame):
     提供与 editor.ToolbarWindow 一致的接口（_highlight_tool / set_color / set_width），
     保证 _LargeViewer 复用 EditorWindow 继承来的样式方法（set_color/set_width/undo）可用。"""
 
-    def __init__(self, master, ed, bg=T.CANVAS):
+    def __init__(self, master, ed, bg=T.TOOLBAR):
         super().__init__(master, bg=bg)
         self.editor = ed
         self._tool_btns = {}
@@ -667,71 +709,270 @@ class _EmbeddedToolbar(tk.Frame):
             kw.setdefault("font", ("Microsoft YaHei UI", 9))
             return tk.Button(parent, **kw)
 
-        # 第一行：标注工具（7 个）+ 颜色 + 线宽 + 撤销
-        row1 = tk.Frame(self, bg=bg)
-        row1.pack(side="top", fill="x", padx=6, pady=(4, 1))
+        # 单排工具栏：标注工具（7 个）+ 颜色 + 线宽 + 撤销 | 分隔 | 保存/复制/删除/盯住/完成
+        bar = tk.Frame(self, bg=bg)
+        bar.pack(fill="x", padx=6, pady=(4, 4))
 
         self._icons = editor._make_tool_icons()
         for tool in editor.TOOLS:
-            b = _mk_btn(row1, image=self._icons[tool],
+            b = _mk_btn(bar, image=self._icons[tool],
                         command=lambda t=tool: self.editor.set_tool(t))
             b.pack(side="left", padx=2)
             self._tool_btns[tool] = b
             self._normal_bg[b] = T.TOOLBAR
 
-        # 颜色：色块按钮 + 下拉菜单（Menu 弹出，不创建独立窗口）
-        self._color_btn = _mk_btn(row1, text="", bg=T.DANGER,
-                                  activebackground=T.DANGER,
-                                  command=self._open_color_menu)
+        # 颜色：圆点按钮 + 展开色板（复刻截图页 ToolbarWindow 的 10 色 + 自定义）
+        self._color_rgb = tuple(self.editor.color)
+        self._color_palette = None
+        self._width_menu = None
+        self._color_dot_img = ImageTk.PhotoImage(
+            editor._make_color_dot_icon(self._color_rgb))
+        self._color_btn = _mk_btn(bar, image=self._color_dot_img,
+                                  command=self._open_color_palette)
         self._color_btn.pack(side="left", padx=(6, 2))
-        self._normal_bg[self._color_btn] = T.DANGER
+        self._normal_bg[self._color_btn] = T.TOOLBAR
+        editor.Tooltip(self._color_btn, "颜色（点击展开色板）")
 
-        # 线宽：下拉菜单
-        self._width_btn = _mk_btn(row1, text="线宽·中", fg=T.INK,
+        # 线宽：图标 + 下拉菜单
+        self._width_img = ImageTk.PhotoImage(editor._make_width_icon())
+        self._width_btn = _mk_btn(bar, image=self._width_img,
                                   command=self._open_width_menu)
         self._width_btn.pack(side="left", padx=2)
         self._normal_bg[self._width_btn] = T.TOOLBAR
+        self._width_tip = editor.Tooltip(self._width_btn, "线宽·常规（点击选择）")
 
-        undo_b = _mk_btn(row1, text="撤销", fg=T.INK,
+        undo_b = _mk_btn(bar, image=self._icons["undo"],
                          command=self.editor.undo)
         undo_b.pack(side="left", padx=2)
         self._normal_bg[undo_b] = T.TOOLBAR
+        editor.Tooltip(undo_b, "撤销上一步")
 
-        # 第二行：常用操作（复制/另存/保存/删除/盯住/关闭）
-        row2 = tk.Frame(self, bg=bg)
-        row2.pack(side="bottom", fill="x", padx=6, pady=(0, 4))
+        # 分隔线
+        sep = tk.Frame(bar, width=1, height=22, bg="#C9CCD0")
+        sep.pack(side="left", padx=6, pady=2)
 
-        for text, cmd in (("复制图片", self.editor._copy_img),
-                          ("另存为...", self.editor._save_as),
-                          ("保存到历史库", self.editor._save_to_gallery),
-                          ("删除(回收站)", self.editor._delete_btn),
-                          ("盯住", self.editor.pin),
-                          ("关闭", self.editor.done)):
-            b = _mk_btn(row2, text=text, fg=T.INK, command=cmd)
-            b.pack(side="left", padx=2)
+        # 操作区：复制 -> 盯住 -> 保存（绿胶囊）-> 删除（红胶囊）置于末尾；
+        # 已删除「完成」按钮（关闭窗口走 Esc / 窗口 X）
+        self._pill_save = self._make_pill(
+            "保存", os.path.join(editor._icon_dir(), "tool_save.png"),
+            T.SUCCESS, T.SUCCESS_HOVER)
+        self._pill_delete = self._make_pill(
+            "删除", os.path.join(editor._icon_dir(), "tool_delete.png"),
+            T.DANGER, T.DANGER_HOVER)
 
-    def _open_color_menu(self):
-        menu = tk.Menu(self, tearoff=0)
-        for name, rgb in editor.COLORS.items():
-            hexc = "#{:02x}{:02x}{:02x}".format(*rgb)
-            menu.add_command(label=name,
-                             command=lambda c=rgb: self.editor.set_color(c))
+        copy_b = _mk_btn(bar, image=self._icons["copy"],
+                         command=self.editor._copy_img)
+        copy_b.pack(side="left", padx=2)
+        editor.Tooltip(copy_b, "复制图片")
+
+        pin_b = _mk_btn(bar, image=self._icons["pin"],
+                        command=self.editor.pin)
+        pin_b.pack(side="left", padx=2)
+        editor.Tooltip(pin_b, "盯住（贴图）")
+
+        save_b = _mk_btn(bar, image=self._pill_save[0],
+                         command=self.editor._save_to_pics)
+        save_b.pack(side="left", padx=2)
+        editor.Tooltip(save_b, "保存（有修改时存到 Pictures\\ScreenSnap）")
+        self._bind_pill_hover(save_b, self._pill_save)
+
+        del_b = _mk_btn(bar, image=self._pill_delete[0],
+                        command=self.editor._delete_btn)
+        del_b.pack(side="left", padx=2)
+        editor.Tooltip(del_b, "删除（回收站）")
+        self._bind_pill_hover(del_b, self._pill_delete)
+
+    def _make_pill(self, text, icon_path, bg, bg_hover):
+        """运行时绘制圆角胶囊按钮图：圆角底 + 白色图标 + 白色文字。
+        返回 (常态图, 悬停图) 两个 PhotoImage。"""
+        from PIL import ImageFont
         try:
-            menu.tk_popup(self._color_btn.winfo_rootx(),
-                          self._color_btn.winfo_rooty() + self._color_btn.winfo_height())
-        finally:
-            menu.grab_release()
+            font = ImageFont.truetype(r"C:\Windows\Fonts\msyh.ttc", 11)
+        except Exception:
+            font = ImageFont.load_default()
+        try:
+            ic = Image.open(icon_path).convert("RGBA")
+        except Exception:
+            ic = None
+        tw = font.getbbox(text)[2] if font.getbbox(text) else len(text) * 11
+        w = 10 + 16 + 6 + tw + 10
+        h = 26
+        pills = []
+        for bgc in (bg, bg_hover):
+            img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            d = ImageDraw.Draw(img)
+            d.rounded_rectangle([0, 0, w - 1, h - 1], radius=h // 2, fill=bgc)
+            if ic is not None:
+                white = Image.new("RGBA", ic.size, (0, 0, 0, 0))
+                px = ic.load()
+                wp = white.load()
+                for y in range(ic.height):
+                    for x in range(ic.width):
+                        a = px[x, y][3]
+                        if a:
+                            wp[x, y] = (255, 255, 255, a)
+                white = white.resize((16, 16), Image.LANCZOS)
+                img.alpha_composite(white, (10, (h - 16) // 2))
+                d = ImageDraw.Draw(img)
+            d.text((10 + 16 + 6, 7), text, font=font,
+                   fill=(255, 255, 255, 255))
+            pills.append(ImageTk.PhotoImage(img))
+        return pills
+
+    def _bind_pill_hover(self, btn, pills):
+        btn.bind("<Enter>", lambda e: btn.configure(image=pills[1]))
+        btn.bind("<Leave>", lambda e: btn.configure(image=pills[0]))
+
+    # ---------- 颜色：展开色板（复刻截图页 ToolbarWindow：10 色 + 自定义） ----------
+    def _hex_rgb(self, rgb):
+        return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+
+    def _open_color_palette(self):
+        if self._color_palette is not None:
+            self._close_color_palette()
+            return
+        self._close_width_menu()
+        self._ensure_dismiss_bindings()
+        pal = tk.Toplevel(self.editor.win)
+        pal.overrideredirect(True)
+        pal.attributes("-topmost", True)
+        # 色板定位：按钮下方居中；下方没空间则放上方（小圆点卡片，高约 74px）
+        ph = 2 * 20 + 24 + 12
+        bw = 5 * 22
+        bx = (self._color_btn.winfo_rootx()
+              + self._color_btn.winfo_width() // 2 - bw // 2)
+        by = (self._color_btn.winfo_rooty()
+              + self._color_btn.winfo_height() + 6)
+        if by + ph > self.editor.win.winfo_screenheight():
+            by = self._color_btn.winfo_rooty() - ph
+        pal.geometry(f"+{max(0, bx)}+{max(0, by)}")
+        pal.configure(bg="#ffffff", highlightthickness=1,
+                      highlightbackground=T.LINE)
+        # 每个颜色一颗小圆点：12px 纯色圆形 + 1px 浅描边，卡片式浅灰圆角底
+        for i, (name, rgb) in enumerate(editor.COLORS.items()):
+            dot = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+            ImageDraw.Draw(dot).ellipse(
+                (0, 0, 11, 11), fill=tuple(rgb) + (255,),
+                outline="#D9DDE3", width=1)
+            img = ImageTk.PhotoImage(dot)
+            b = tk.Button(pal, image=img, width=0, height=0, relief="flat",
+                          bd=0, bg=T.SURFACE_3, activebackground=T.ACCENT_SOFT,
+                          cursor="hand2",
+                          command=lambda c=rgb: self.editor.set_color(c))
+            b.img = img
+            b.grid(row=i // 5, column=i % 5, padx=2, pady=2)
+            editor.Tooltip(b, name)
+        cus = tk.Button(pal, text="…", font=("Microsoft YaHei UI", 11, "bold"),
+                        relief="flat", bd=0, fg=T.INK_2, bg="#ffffff",
+                        activebackground=T.SURFACE_3, cursor="hand2",
+                        command=self._pick_custom_color)
+        cus.grid(row=2, column=0, padx=2, pady=2)
+        self._color_palette = pal
+        pal.bind("<FocusOut>", lambda e: self._close_color_palette())
+
+    def _pick_custom_color(self):
+        self._close_color_palette()
+        from tkinter import colorchooser
+        rgb, _ok = colorchooser.askcolor(
+            color=self._hex_rgb(self._color_rgb),
+            parent=self.editor.win, title="自定义颜色")
+        if rgb:
+            self.editor.set_color((int(rgb[0]), int(rgb[1]), int(rgb[2])))
+
+    def _close_color_palette(self):
+        if self._color_palette is not None:
+            try:
+                self._color_palette.destroy()
+            except Exception:
+                pass
+            self._color_palette = None
+
+    def _close_width_menu(self):
+        if self._width_menu is not None:
+            try:
+                self._width_menu.destroy()
+            except Exception:
+                pass
+            self._width_menu = None
+
+    def _ensure_dismiss_bindings(self):
+        """首次打开弹窗前绑定：主窗口任意鼠标/键盘/滚轮操作时自动关闭弹窗。"""
+        if getattr(self, "_dismiss_bound", False):
+            return
+        root = self.editor.win.winfo_toplevel()
+        root.bind_all("<Button-1>", self._dismiss_popups, add="+")
+        root.bind_all("<Key>", self._dismiss_popups, add="+")
+        root.bind_all("<MouseWheel>", self._dismiss_popups, add="+")
+        self._dismiss_bound = True
+
+    def _dismiss_popups(self, event=None):
+        """点击/按键/滚轮发生在弹窗外部时，关闭颜色与线宽弹窗。"""
+        if self._color_palette is None and self._width_menu is None:
+            return
+        w = event.widget if event is not None else None
+        top = None
+        if w is not None:
+            try:
+                top = w.winfo_toplevel()
+            except Exception:
+                top = None
+        if top is not None and (top is self._color_palette
+                                or top is self._width_menu):
+            return  # 弹窗内部操作不在此关闭（按钮命令自行处理）
+        self._close_color_palette()
+        self._close_width_menu()
 
     def _open_width_menu(self):
-        menu = tk.Menu(self, tearoff=0)
-        for name, w in editor.WIDTHS.items():
-            menu.add_command(label=f"{name}（{w}px）",
-                             command=lambda v=w, n=name: self.editor.set_width(v, n))
-        try:
-            menu.tk_popup(self._width_btn.winfo_rootx(),
-                          self._width_btn.winfo_rooty() + self._width_btn.winfo_height())
-        finally:
-            menu.grab_release()
+        if self._width_menu is not None:
+            self._close_width_menu()
+            return
+        self._close_color_palette()
+        self._ensure_dismiss_bindings()
+        menu = tk.Toplevel(self.editor.win)
+        menu.overrideredirect(True)
+        menu.attributes("-topmost", True)
+        # 定位：按钮下方；下方没空间则放上方（紧凑行式，高约 106px）
+        mh = len(editor.WIDTHS) * 20 + 8
+        bx = self._width_btn.winfo_rootx()
+        by = (self._width_btn.winfo_rooty()
+              + self._width_btn.winfo_height() + 6)
+        if by + mh > self.editor.win.winfo_screenheight():
+            by = self._width_btn.winfo_rooty() - mh
+        menu.geometry(f"+{max(0, bx)}+{max(0, by)}")
+        menu.configure(bg="#ffffff", highlightthickness=1,
+                       highlightbackground=T.LINE)
+        cur = self.editor.width
+        # 每行：按实际像素粗细画一条线 + 名称 + px 标注，整行可点击
+        for i, (name, w) in enumerate(editor.WIDTHS.items()):
+            row = tk.Frame(menu, bg="#ffffff", cursor="hand2")
+            row.grid(row=i, column=0, sticky="ew", padx=3, pady=1)
+            row.bind("<Button-1>", lambda e, v=w, n=name: self._apply_width(v, n))
+            cv = tk.Canvas(row, width=60, height=16, bg="#ffffff",
+                           highlightthickness=0)
+            cv.grid(row=0, column=0, padx=(2, 1), pady=2)
+            cv.bind("<Button-1>", lambda e, v=w, n=name: self._apply_width(v, n))
+            line_h = 8  # 中线：上下留空避免粗线溢出
+            cv.create_line(2, line_h, 58, line_h, fill=T.INK_2, width=w)
+            sel = "●" if w == cur else " "
+            lab = tk.Label(row, text=f"{sel} {name}（{w}px）",
+                           bg="#ffffff", fg=T.INK_2,
+                           font=("Microsoft YaHei UI", 8))
+            lab.grid(row=0, column=1, sticky="w")
+            lab.bind("<Button-1>", lambda e, v=w, n=name: self._apply_width(v, n))
+            for wid in (row, cv, lab):
+                wid.bind("<Enter>", lambda e, f=row: f.configure(bg=T.ACCENT_SOFT))
+                wid.bind("<Leave>", lambda e, f=row: f.configure(bg="#ffffff"))
+            if w == cur:
+                row.configure(bg=T.ACCENT_SOFT)
+                cv.configure(bg=T.ACCENT_SOFT)
+                lab.configure(bg=T.ACCENT_SOFT)
+        self._width_menu = menu
+        menu.bind("<FocusOut>", lambda e: self._close_width_menu())
+        menu.bind("<Escape>", lambda e: self._close_width_menu())
+
+    def _apply_width(self, w, name):
+        self.editor.set_width(w, name)
+        self._close_width_menu()
 
     def _highlight_tool(self):
         """当前工具高亮（None 表示浏览/平移模式，无高亮）。"""
@@ -747,15 +988,17 @@ class _EmbeddedToolbar(tk.Frame):
                             highlightcolor=T.TOOLBAR)
 
     def set_color(self, rgb):
-        hexc = "#{:02x}{:02x}{:02x}".format(*rgb)
-        self._color_btn.configure(bg=hexc, activebackground=hexc,
-                                  highlightbackground=T.ACCENT,
-                                  highlightcolor=T.ACCENT)
+        self._color_rgb = tuple(rgb)
+        self._color_dot_img = ImageTk.PhotoImage(
+            editor._make_color_dot_icon(self._color_rgb))
+        self._color_btn.configure(image=self._color_dot_img)
+        self._close_color_palette()
 
     def set_width(self, w, name=None):
         if name is None:
             name = next((n for n, v in editor.WIDTHS.items() if v == w), str(w))
-        self._width_btn.configure(text=f"线宽·{name}")
+        if getattr(self, "_width_tip", None) is not None:
+            self._width_tip.text = f"线宽·{name}（点击选择）"
 
 
 class _LargeViewer(editor.EditorWindow):
@@ -779,7 +1022,8 @@ class _LargeViewer(editor.EditorWindow):
         self.undo_stack = []
         self.tool = None  # 默认浏览/平移模式：不激活任何绘制工具，工具栏无高亮
         self.color = editor.COLORS["红"]
-        self.width = editor.WIDTHS["中"]
+        # 粗细档位名随主题变化（“中”已改为“常规”），取不到时回退 4px
+        self.width = editor.WIDTHS.get("中", editor.WIDTHS.get("常规", 4))
         self._start = None
         self._preview = None
         self._pen_points = []
@@ -787,6 +1031,10 @@ class _LargeViewer(editor.EditorWindow):
         self._text_objs = []
         self._drag_text = None
         self._drag_off = (0, 0)
+        self._sel = None          # 当前选中文字对象（单点弹出缩放框）
+        self._sel_mode = None     # move / scale_nw|ne|sw|se / rot
+        self._sel_diag = 0.0      # 缩放按下时角点到中心的距离（画布坐标）
+        self._sel_base_size = 0   # 缩放按下时的初始字号
         self.mode = editor.MODE_DRAW
         self.full_img = image.convert("RGB")
         self.sel = [0, 0, self.full_img.width, self.full_img.height]
@@ -810,8 +1058,8 @@ class _LargeViewer(editor.EditorWindow):
         self.win.title("ScreenSnap - 大图查看与标注")
         dw = max(1, int(self.w * self._scale))
         dh = max(1, int(self.h * self._scale))
-        # 底部为两行内嵌工具栏，窗口高度相应增加
-        self.win.geometry(f"{dw + 16}x{dh + 96}")
+        # 底部为单排内嵌工具栏，窗口高度相应增加
+        self.win.geometry(f"{dw + 16}x{dh + 44}")
         self.win.minsize(480, 320)
         try:
             self.win.transient(root)
@@ -836,8 +1084,8 @@ class _LargeViewer(editor.EditorWindow):
         self.canvas.bind("<Motion>", self._on_hover)
         self.canvas.bind("<MouseWheel>", self._on_wheel_large)
         self.canvas.bind("<Configure>", self._on_resize)
-        self.win.bind("<Escape>", lambda e: self.cancel())
-        self.win.bind("<Return>", lambda e: self.done())
+        self.win.bind("<Escape>", self._on_escape)
+        self.win.bind("<Return>", lambda e: self.cancel())  # 已删除完成按钮，回车=关闭不落盘
         self.win.protocol("WM_DELETE_WINDOW", self._close)  # 点窗口 X：一并销毁悬浮工具栏
         self.win.bind("<Control-z>", lambda e: self.undo())
         self.win.bind("<Control-Z>", lambda e: self.undo())
@@ -890,6 +1138,9 @@ class _LargeViewer(editor.EditorWindow):
         for obj in self._text_objs:
             if obj.get("item") is not None:
                 self.canvas.move(obj["item"], dx, dy)
+        # 选择框跟随平移（保持与选中文字贴合）
+        for cid in self.canvas.find_withtag("selbox"):
+            self.canvas.move(cid, dx, dy)
 
     # ---------- 坐标换算 ----------
     def _img_coords(self, event):
@@ -925,18 +1176,186 @@ class _LargeViewer(editor.EditorWindow):
             self._origin_x, self._origin_y, image=self._photo, anchor="nw")
         s = self._scale
         for obj in self._text_objs:
-            layer, off = self._render_text_img(obj)
+            layer, offx, offy = self._render_text_img(obj)
             if s != 1.0:
                 layer = layer.resize((max(1, int(layer.width * s)),
                                       max(1, int(layer.height * s))), 3)
             obj["photo"] = ImageTk.PhotoImage(layer)
             obj["item"] = self.canvas.create_image(
-                obj["x"] * s + self._origin_x - off * s,
-                obj["y"] * s + self._origin_y - off * s,
+                obj["x"] * s + self._origin_x - offx * s,
+                obj["y"] * s + self._origin_y - offy * s,
                 image=obj["photo"], anchor="nw")
         # 大图查看窗口不绘制工作区红框（浏览/编辑均不显示）
+        # 全量重绘后重画选择框（若存在选中文字）
+        if self._sel is not None:
+            self._draw_sel_box()
 
     # ---------- 鼠标交互（重写：空白平移 + 画布坐标换算） ----------
+    # ---------- 文字选择框：单点选中 -> 缩放/旋转/移动 ----------
+    def _text_at_canvas(self, cx, cy):
+        """画布坐标命中检测：返回坐标处的文字对象（后添加的优先）。"""
+        for obj in reversed(self._text_objs):
+            item = obj.get("item")
+            if item is None:
+                continue
+            bb = self.canvas.bbox(item)
+            if bb and bb[0] <= cx <= bb[2] and bb[1] <= cy <= bb[3]:
+                return obj
+        return None
+
+    def _select_text(self, obj):
+        self._sel = obj
+        self._sel_mode = None
+        self._draw_sel_box()
+
+    def _clear_sel(self):
+        self._sel = None
+        self._sel_mode = None
+        self._clear_sel_box()
+
+    def _clear_sel_box(self):
+        try:
+            self.canvas.delete("selbox")
+        except Exception:
+            pass
+
+    def _draw_sel_box(self):
+        """画选中缩放框：虚线边框 + 四角缩放手柄 + 顶部旋转手柄。"""
+        self._clear_sel_box()
+        obj = self._sel
+        if obj is None:
+            return
+        item = obj.get("item")
+        if item is None:
+            return
+        bb = self.canvas.bbox(item)
+        if not bb:
+            return
+        x0, y0, x1, y1 = bb
+        pad = 5
+        x0 -= pad
+        y0 -= pad
+        x1 += pad
+        y1 += pad
+        self.canvas.create_rectangle(x0, y0, x1, y1, outline=T.ACCENT,
+                                     dash=(4, 3), width=1, tags="selbox")
+        # 顶部旋转手柄：连线上方圆点
+        rx = (x0 + x1) / 2
+        ry = y0 - 18
+        self.canvas.create_line(rx, y0, rx, ry, fill=T.ACCENT, width=1,
+                                tags="selbox")
+        self.canvas.create_oval(rx - 5, ry - 5, rx + 5, ry + 5,
+                                fill="#ffffff", outline=T.ACCENT, width=1.5,
+                                tags=("selbox", "sel_rot"))
+        for tag, hx, hy in (("sel_nw", x0, y0), ("sel_ne", x1, y0),
+                            ("sel_sw", x0, y1), ("sel_se", x1, y1)):
+            self.canvas.create_rectangle(hx - 4, hy - 4, hx + 4, hy + 4,
+                                         fill="#ffffff", outline=T.ACCENT,
+                                         width=1.5, tags=("selbox", tag))
+        self.canvas.tag_raise("selbox")
+
+    def _hit_sel_handle(self, cx, cy):
+        """命中返回手柄模式：scale_nw/ne/sw/se、rot；未命中返回 None。"""
+        for tag, mode in (("sel_se", "scale_se"), ("sel_nw", "scale_nw"),
+                          ("sel_ne", "scale_ne"), ("sel_sw", "scale_sw"),
+                          ("sel_rot", "rot")):
+            for it in self.canvas.find_withtag(tag):
+                bb = self.canvas.bbox(it)
+                if (bb and bb[0] - 3 <= cx <= bb[2] + 3
+                        and bb[1] - 3 <= cy <= bb[3] + 3):
+                    return mode
+        return None
+
+    def _refresh_sel_obj(self):
+        """重渲染选中文字（缩放/旋转后）并重画选择框。"""
+        obj = self._sel
+        if obj is None:
+            return
+        try:
+            self.canvas.delete(obj["item"])
+        except Exception:
+            pass
+        obj["item"] = None
+        s = self._scale
+        layer, offx, offy = self._render_text_img(obj)
+        if s != 1.0:
+            layer = layer.resize((max(1, int(layer.width * s)),
+                                  max(1, int(layer.height * s))), 3)
+        obj["photo"] = ImageTk.PhotoImage(layer)
+        obj["item"] = self.canvas.create_image(
+            obj["x"] * s + self._origin_x - offx * s,
+            obj["y"] * s + self._origin_y - offy * s,
+            image=obj["photo"], anchor="nw")
+        self.canvas.tag_raise(obj["item"])
+        self._draw_sel_box()
+
+    def _drag_sel(self, event):
+        """拖动选择框：move 移动 / scale 角手柄缩放 / rot 顶部手柄旋转。"""
+        obj = self._sel
+        if obj is None:
+            self._sel_mode = None
+            return
+        cx, cy = event.x, event.y
+        if self._sel_mode == "move":
+            nx = (cx - self._drag_off[0] - self._origin_x) / self._scale
+            ny = (cy - self._drag_off[1] - self._origin_y) / self._scale
+            dx = (nx - obj["x"]) * self._scale
+            dy = (ny - obj["y"]) * self._scale
+            obj["x"], obj["y"] = nx, ny
+            if obj["item"] is not None:
+                self.canvas.move(obj["item"], dx, dy)
+            self._draw_sel_box()
+        elif self._sel_mode.startswith("scale"):
+            bb = self.canvas.bbox(obj["item"])
+            if not bb:
+                return
+            ccx = (bb[0] + bb[2]) / 2
+            ccy = (bb[1] + bb[3]) / 2
+            dist = math.hypot(cx - ccx, cy - ccy)
+            if self._sel_diag > 0:
+                factor = dist / self._sel_diag
+                obj["font_size"] = max(8, min(200, int(
+                    round(self._sel_base_size * factor))))
+                self._refresh_sel_obj()
+        elif self._sel_mode == "rot":
+            bb = self.canvas.bbox(obj["item"])
+            if not bb:
+                return
+            ccx = (bb[0] + bb[2]) / 2
+            ccy = (bb[1] + bb[3]) / 2
+            ang = math.degrees(math.atan2(cy - ccy, cx - ccx))
+            obj["angle"] = (ang + 90) % 360
+            self._refresh_sel_obj()
+
+    def _on_escape(self):
+        """Esc：先取消文字输入/选择框，再关闭窗口。"""
+        if self._text_entry is not None:
+            try:
+                self._finish_text_entry(cancel=True)
+            except Exception:
+                pass
+            self._restore_tool_cursor()
+            return
+        if self._sel is not None:
+            self._clear_sel()
+            return
+        self.cancel()
+
+    def _on_hover(self, event):
+        """悬停：选择框手柄/选中文字显示可拖动光标。"""
+        try:
+            super()._on_hover(event)
+        except Exception:
+            pass
+        if self._sel_mode:
+            return
+        if self._sel is not None:
+            if self._hit_sel_handle(event.x, event.y):
+                self.canvas.configure(cursor="fleur")
+                return
+            if self._text_at_canvas(event.x, event.y) is self._sel:
+                self.canvas.configure(cursor="fleur")
+
     def _on_press(self, event):
         if self._text_entry is not None:
             self._commit_text()
@@ -947,26 +1366,44 @@ class _LargeViewer(editor.EditorWindow):
             self._pan_last = (event.x, event.y)
             self.canvas.configure(cursor="fleur")
             return
+        cx, cy = event.x, event.y
+        # 已有选择框：优先响应缩放/旋转手柄
+        if self._sel is not None:
+            mode = self._hit_sel_handle(cx, cy)
+            if mode:
+                obj = self._sel
+                self._sel_mode = mode
+                if mode.startswith("scale"):
+                    self._sel_base_size = obj["font_size"]
+                    bb = self.canvas.bbox(obj["item"])
+                    if bb:
+                        ccx = (bb[0] + bb[2]) / 2
+                        ccy = (bb[1] + bb[3]) / 2
+                        self._sel_diag = max(1.0, math.hypot(cx - ccx,
+                                                             cy - ccy))
+                return
+        # 单点文字：弹出缩放框并进入移动模式（双击仍可编辑文本）
+        hit = self._text_at_canvas(cx, cy)
+        if hit is not None:
+            self._select_text(hit)
+            self._sel_mode = "move"
+            bbox = self.canvas.bbox(hit["item"])
+            self._drag_off = (cx - bbox[0], cy - bbox[1])
+            self.canvas.configure(cursor="fleur")
+            return
+        # 未点中文字：清除选择框
+        self._clear_sel()
         if self.tool is None:
-            # 浏览/平移模式：按下即拖动整幅图
+            # 浏览/平移模式：空白处按下即拖动整幅图
             self._panning = True
-            self._pan_last = (event.x, event.y)
+            self._pan_last = (cx, cy)
             self.canvas.configure(cursor="fleur")
             return
         x, y = self._img_coords(event)
         # 图片外空白：开始平移画布（光标即时切手型，拖动过程中保持）
         if not (0 <= x < self.w and 0 <= y < self.h):
             self._panning = True
-            self._pan_last = (event.x, event.y)
-            self.canvas.configure(cursor="fleur")
-            return
-        hit = self._text_at(x, y)
-        if hit is not None:
-            self._drag_text = hit
-            bbox = self.canvas.bbox(hit["item"])
-            cx = x * self._scale + self._origin_x
-            cy = y * self._scale + self._origin_y
-            self._drag_off = (cx - bbox[0], cy - bbox[1])
+            self._pan_last = (cx, cy)
             self.canvas.configure(cursor="fleur")
             return
         self._push_undo()
@@ -987,6 +1424,10 @@ class _LargeViewer(editor.EditorWindow):
     def _on_drag(self, event):
         if self._panning:
             self._pan_to(event)
+            return
+        # 选择框拖动：移动 / 缩放 / 旋转选中文字
+        if self._sel_mode:
+            self._drag_sel(event)
             return
         # 拖动文字对象：实时移动（画布偏移 = 图片坐标差 * scale）
         if self._drag_text is not None:
@@ -1048,6 +1489,9 @@ class _LargeViewer(editor.EditorWindow):
             self._pan_last = None
             self._restore_tool_cursor()
             return
+        if self._sel_mode:
+            self._sel_mode = None
+            return
         if self._drag_text is not None:
             self._drag_text = None
             self._restore_tool_cursor()
@@ -1090,8 +1534,9 @@ class _LargeViewer(editor.EditorWindow):
         self.canvas.configure(cursor="fleur" if self.tool is None else "crosshair")
 
     def _commit_text(self):
-        """提交文字输入后恢复工具光标（十字线/手型）。"""
+        """提交文字输入后恢复工具光标（十字线/手型），并清除过时的选择框。"""
         super()._commit_text()
+        self._clear_sel()
         self._restore_tool_cursor()
 
     def _finish_text_entry(self, cancel=False):
@@ -1120,6 +1565,64 @@ class _LargeViewer(editor.EditorWindow):
         self._origin_y = max(0.0, (ch - dh) / 2)
         self._refresh_display()
         # 内嵌工具栏为窗口子控件，随窗口布局自动贴底，无需手动排布
+
+    # ---------- 保存按钮：有修改时自动存到 Pictures\ScreenSnap 并展示在画布 ----------
+    def _save_to_pics(self):
+        """保存：若标注过（撤销栈有记录或存在文字对象）则把标注合成图自动保存到
+        C:\\Users\\Administrator\\Pictures\\ScreenSnap（时间戳命名，不弹另存为框），
+        结果以 toast 展示在画布中；无修改则不落盘仅提示。"""
+        try:
+            self._finish_text_entry()
+        except Exception:
+            pass
+        if not (self.undo_stack or self._text_objs):
+            self._show_toast("图片无修改，未保存")
+            return
+        d = r"C:\Users\Administrator\Pictures\ScreenSnap"
+        try:
+            os.makedirs(d, exist_ok=True)
+            img_out = self.img.convert("RGBA")
+            if self._text_objs:
+                for obj in self._text_objs:
+                    layer, ox, oy = self._render_text_img(obj)
+                    img_out.alpha_composite(
+                        layer, (int(obj["x"] - ox), int(obj["y"] - oy)))
+            img_out = img_out.convert("RGB")
+            p = os.path.join(d, time.strftime("ScreenSnap_%Y%m%d_%H%M%S.png"))
+            n = 1
+            while os.path.exists(p):
+                p = os.path.join(d, time.strftime("ScreenSnap_%Y%m%d_%H%M%S")
+                                 + f"_{n}.png")
+                n += 1
+            img_out.save(p)
+            # 同时存入历史库并刷新画布，让图片作为新条目出现在历史库画布中
+            if self.storage is not None:
+                try:
+                    self.storage.save_image(img_out, None, self.save_fmt)
+                    if self.on_saved:
+                        try:
+                            self.on_saved()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            self._show_toast(f"已保存并添加到历史库：{p}")
+        except Exception as e:
+            messagebox.showerror("ScreenSnap", f"保存失败：{e}")
+
+    def _show_toast(self, msg):
+        """画布底部居中 toast 提示，2.5 秒后自动消失。"""
+        try:
+            self.canvas.delete("toast")
+            cw = max(1, self.canvas.winfo_width())
+            ch = max(1, self.canvas.winfo_height())
+            self.canvas.create_text(
+                cw // 2, ch - 28, text=msg, fill="#ffffff",
+                font=("Microsoft YaHei UI", 11), tags="toast")
+            self.canvas.tag_raise("toast")
+            self.win.after(2500, lambda: self.canvas.delete("toast"))
+        except Exception:
+            pass
 
     def _save_to_gallery(self):
         """保存：标注合成图存为新文件并自动加入历史库，成功后刷新历史库画布。
@@ -1271,27 +1774,63 @@ class _VideoViewer:
             pass
         self.win.protocol("WM_DELETE_WINDOW", self._close)
 
-        top = tk.Frame(self.win, bg="#1f1f1f")
+        top = tk.Frame(self.win, bg=T.INK)
         top.pack(fill="x")
-        tk.Label(top, text=os.path.basename(path), bg="#1f1f1f", fg="#ffb800",
+        tk.Label(top, text=os.path.basename(path), bg=T.INK, fg="#ffffff",
                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=10, pady=6)
         self.info_var = tk.StringVar(value="")
-        tk.Label(top, textvariable=self.info_var, bg="#1f1f1f", fg="#cccccc",
+        tk.Label(top, textvariable=self.info_var, bg=T.INK, fg="#cccccc",
                  font=("Microsoft YaHei UI", 9)).pack(side="right", padx=10)
 
         self.canvas = tk.Canvas(self.win, bg="#000000",
                                 highlightthickness=0, width=dw, height=dh)
         self.canvas.pack(fill="both", expand=True)
 
-        bar = tk.Frame(self.win, bg="#2a2a2a")
+        bar = tk.Frame(self.win, bg=T.INK)
         bar.pack(fill="x")
-        self._btn_play = tk.Button(bar, text="暂停", command=self._toggle_play,
-                                   font=("Microsoft YaHei UI", 9), width=6)
+        # 胶囊按钮：风格对齐截图页完成按钮（Pillow 绘制两态图，深色栏上不突兀）
+        self._play_imgs = T.make_pill_text("暂停", T.SUCCESS, T.SUCCESS_HOVER,
+                                           font_size=9, padx=12, pady=5)
+        self._resume_imgs = T.make_pill_text("播放", T.SUCCESS, T.SUCCESS_HOVER,
+                                             font_size=9, padx=12, pady=5)
+        self._btn_play = tk.Button(bar, image=self._play_imgs[0],
+                                   command=self._toggle_play,
+                                   bd=0, relief="flat", highlightthickness=0,
+                                   cursor="hand2", bg=T.INK,
+                                   activebackground=T.INK)
+        self._btn_play.config(width=self._play_imgs[0].width(),
+                              height=self._play_imgs[0].height())
         self._btn_play.pack(side="left", padx=8, pady=5)
-        tk.Button(bar, text="重新播放", command=self._restart,
-                  font=("Microsoft YaHei UI", 9)).pack(side="left", padx=4, pady=5)
-        tk.Button(bar, text="关闭", command=self._close,
-                  font=("Microsoft YaHei UI", 9)).pack(side="right", padx=8, pady=5)
+        self._btn_play.bind(
+            "<Enter>", lambda e: self._btn_play.configure(
+                image=(self._play_imgs[1] if self._playing
+                       else self._resume_imgs[1])))
+        self._btn_play.bind(
+            "<Leave>", lambda e: self._btn_play.configure(
+                image=(self._play_imgs[0] if self._playing
+                       else self._resume_imgs[0])))
+        restart_n, restart_h = T.make_pill_text(
+            "重新播放", T.SURFACE_3, "#E4E6EA", fg=T.INK,
+            font_size=9, padx=12, pady=5)
+        self._restart_imgs = (restart_n, restart_h)
+        restart_b = tk.Button(bar, image=restart_n, command=self._restart,
+                              bd=0, relief="flat", highlightthickness=0,
+                              cursor="hand2", bg=T.INK,
+                              activebackground=T.INK)
+        restart_b.config(width=restart_n.width(), height=restart_n.height())
+        restart_b.pack(side="left", padx=4, pady=5)
+        restart_b.bind("<Enter>", lambda e: restart_b.configure(image=restart_h))
+        restart_b.bind("<Leave>", lambda e: restart_b.configure(image=restart_n))
+        close_n, close_h = T.make_pill_text("关闭", T.DANGER, T.DANGER_HOVER,
+                                            font_size=9, padx=12, pady=5)
+        close_b = tk.Button(bar, image=close_n, command=self._close,
+                            bd=0, relief="flat", highlightthickness=0,
+                            cursor="hand2", bg=T.INK,
+                            activebackground=T.INK)
+        close_b.config(width=close_n.width(), height=close_n.height())
+        close_b.pack(side="right", padx=8, pady=5)
+        close_b.bind("<Enter>", lambda e: close_b.configure(image=close_h))
+        close_b.bind("<Leave>", lambda e: close_b.configure(image=close_n))
 
         if self._gen is None:
             self.info_var.set("无法解码视频")
@@ -1311,7 +1850,7 @@ class _VideoViewer:
             data = next(self._gen)
         except StopIteration:
             self._playing = False
-            self._btn_play.configure(text="播放")
+            self._btn_play.configure(image=self._resume_imgs[0])
             self.info_var.set(f"播放完成" + (f" · {self._total} 帧" if self._total else ""))
             return
         except Exception:
@@ -1340,12 +1879,12 @@ class _VideoViewer:
             return
         if self._playing:
             self._playing = False
-            self._btn_play.configure(text="播放")
+            self._btn_play.configure(image=self._resume_imgs[0])
         else:
             if self._gen is None:
                 return
             self._playing = True
-            self._btn_play.configure(text="暂停")
+            self._btn_play.configure(image=self._play_imgs[0])
             self.win.after(int(1000 / max(1.0, self._fps)), self._step)
 
     def _restart(self):

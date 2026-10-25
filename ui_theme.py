@@ -24,7 +24,7 @@ SURFACE = "#FFFFFF"           # 窗口面板
 SURFACE_2 = "#F7F8FA"         # 侧栏 / 输入底
 SURFACE_3 = "#EEF0F3"         # 悬停底
 CANVAS = "#F0F1F4"            # 页面 / 工作区底
-TOOLBAR = "#FBFBFC"           # 悬浮工具栏底
+TOOLBAR = "#DEDFE1"           # 悬浮工具栏底（灰白，再灰 20 度）
 MASK_RGB = (16, 22, 32)       # 截图遮罩 RGB（绘制时叠加 alpha 0.46）
 
 # ---------------- 圆角 ----------------
@@ -45,8 +45,8 @@ FONT_TITLE = (FONT_FAMILY, 14, "bold")
 FONT_BADGE = (FONT_DIGIT, 9, "bold")  # 尺寸徽标（12px / 600）
 
 # ---------------- 尺寸 ----------------
-TOOLBAR_H = 52                # 悬浮工具条高度
-TOOL_BTN = 40                 # 工具按钮直径
+TOOLBAR_H = 32                # 悬浮工具条高度（贴合 24px 按钮 + 上下 4px 留白）
+TOOL_BTN = 24                 # 工具按钮直径
 TOOL_ICON = 24                # 图标显示尺寸
 SWITCH_W = 40                 # Switch 宽
 SWITCH_H = 22                 # Switch 高
@@ -69,6 +69,59 @@ PALETTE_NAMES = ["红", "橙", "黄", "绿", "蓝", "紫", "粉", "黑", "灰", 
 # ---------------- 线宽预设（1 / 2 / 4 / 6 / 8） ----------------
 WIDTH_PRESETS = [1, 2, 4, 6, 8]
 WIDTH_NAMES = {1: "极细", 2: "细", 4: "常规", 6: "粗", 8: "特粗"}
+
+
+# ---------------- 胶囊按钮图（Pillow 绘制，风格对齐截图页完成按钮） ----------------
+_PILL_FONT_CACHE = {}
+
+
+def _pill_font(size):
+    if size not in _PILL_FONT_CACHE:
+        from PIL import ImageFont
+        fp = r"C:\Windows\Fonts\msyh.ttc"
+        try:
+            _PILL_FONT_CACHE[size] = ImageFont.truetype(fp, size)
+        except Exception:
+            try:
+                _PILL_FONT_CACHE[size] = ImageFont.truetype(r"C:\Windows\Fonts\msyhbd.ttc", size)
+            except Exception:
+                _PILL_FONT_CACHE[size] = ImageFont.load_default()
+    return _PILL_FONT_CACHE[size]
+
+
+def make_pill_text(text, bg, hover, fg="#ffffff", font_size=10,
+                   padx=12, pady=5, radius=None):
+    """用 Pillow 绘制圆角胶囊按钮图，返回 (常态图, 悬停图) 两个 PhotoImage。
+
+    风格对齐截图页完成按钮：实底圆角胶囊 + 白字，悬停变深一档。
+    按钮使用 tk.Button(image=...) 时请配合 bd=0/relief=flat/highlightthickness=0，
+    并把按钮 width/height 设为图的像素尺寸、activebackground 设为容器底色。
+    """
+    from PIL import Image, ImageDraw, ImageTk
+    font = _pill_font(font_size)
+    bb = font.getbbox(text)
+    tw = bb[2] - bb[0]
+    th = bb[3] - bb[1]
+    w = tw + padx * 2 + 2
+    h = th + pady * 2 + 2
+    if radius is None:
+        radius = h // 2
+
+    def _make(fill):
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=fill)
+        d.text(((w - tw) // 2 - bb[0], (h - th) // 2 - bb[1]),
+               text, font=font, fill=fg)
+        return ImageTk.PhotoImage(img)
+
+    return _make(bg), _make(hover)
+
+
+def make_pill_icon(text, bg, hover, fg="#ffffff", font_size=10,
+                   padx=12, pady=5, radius=None):
+    """别名：生成胶囊按钮两态图，语义更直白。"""
+    return make_pill_text(text, bg, hover, fg, font_size, padx, pady, radius)
 
 
 def hex_of(rgb):

@@ -2,6 +2,8 @@
 """ScreenSnap 主入口：托盘常驻 + 全局热键截图 + 编辑 + 自动复制/入库/贴图。"""
 import os
 import sys
+import datetime
+import traceback
 import threading
 import tkinter as tk
 import winreg
@@ -20,6 +22,27 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ICON_PATH = os.path.join(APP_DIR, "assets", "icon.png")
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "ScreenSnap"
+
+# ---------- 全局异常钩子：任何未捕获异常落盘 crash.log，避免静默退出无痕 ----------
+def _crash_log_path():
+    return os.path.join(os.environ.get("APPDATA", "."), "ScreenSnap", "crash.log")
+
+
+def _write_crash(kind, exc_type, exc_value, tb):
+    try:
+        with open(_crash_log_path(), "a", encoding="utf-8") as f:
+            f.write(f"\n=== {datetime.datetime.now().isoformat(timespec='seconds')} [{kind}] ===\n")
+            f.write("".join(traceback.format_exception(exc_type, exc_value, tb)))
+    except Exception:
+        pass
+
+
+def _excepthook(exc_type, exc_value, tb):
+    _write_crash("thread", exc_type, exc_value, tb)
+
+
+def _tk_exception(self, exc, val, tb):
+    _write_crash("tk", exc, val, tb)
 
 # ---------- 单实例互斥锁 ----------
 SINGLE_INSTANCE_MUTEX = "Local\\ScreenSnap_SingleInstance"
@@ -166,14 +189,18 @@ class ScreenSnapApp:
 
     def _on_done(self, img, x=0, y=0):
         self._busy = False
-        # 1) 复制到剪贴板（按设置：截图后自动复制）
-        if self.config.get("auto_copy", True):
-            from clipboard import copy_image_to_clipboard
-            copy_image_to_clipboard(img)
-        # 2) 保存到历史库（按当前设置格式）
-        fmt = self.config.get("save_format", "png")
-        img = img.convert("RGB")
-        self.storage.save_image(img, None, fmt)
+        try:
+            # 1) 复制到剪贴板（按设置：截图后自动复制）
+            if self.config.get("auto_copy", True):
+                from clipboard import copy_image_to_clipboard
+                copy_image_to_clipboard(img)
+            # 2) 保存到历史库（按当前设置格式）
+            fmt = self.config.get("save_format", "png")
+            img = img.convert("RGB")
+            self.storage.save_image(img, None, fmt)
+        except Exception as e:
+            self._notify(f"保存截图失败：{e}")
+            self._log(f"_on_done FAIL {e!r}")
         # 3) 完成即关闭：不残留贴图；如需钉桌面请用「盯住」
 
     def _on_pin(self, img, x=0, y=0):
@@ -199,7 +226,8 @@ class ScreenSnapApp:
         self._busy = True
         try:
             from recorder import start_record as _start_record
-            _start_record(self.root, self.storage, rect=rect,
+            fps = int(self.config.get("record_fps", 30))
+            _start_record(self.root, self.storage, rect=rect, fps=fps,
                           on_finish=self._on_record_finished)
         except Exception as e:
             self._busy = False
@@ -272,6 +300,8 @@ def main():
     if not ensure_single_instance():
         # 已有 ScreenSnap 实例在运行，直接退出，避免多开
         return
+    sys.excepthook = _excepthook
+    tk.Tk.report_callback_exception = _tk_exception
     app = ScreenSnapApp()
     app.root.mainloop()
 
