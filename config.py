@@ -6,6 +6,39 @@ import sys
 
 APP_NAME = "ScreenSnap"
 APP_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME)
+
+# ---------------- 版本 / 官网 / 更新 ----------------
+# 发版时只改这里：启动信息面板、关于区、更新比对都读它。
+APP_VERSION = "1.0.0"
+# 官网或项目主页；留空则启动信息里不出现「官网」这一行。
+APP_SITE = ""
+# 版本检查地址，返回 JSON：{"version":"1.2.0","url":"下载页","notes":"更新说明"}
+# 留空表示未配置更新源，面板只显示「检查更新」按钮做手动提示。
+UPDATE_URL = ""
+# 有新版本时优先打开的下载页；留空则回退用 JSON 里的 url。
+UPDATE_PAGE = ""
+
+
+def version_tuple(text: str) -> tuple:
+    """'1.2.10' -> (1,2,10)，用于版本比较（非数字段按 0 处理）。"""
+    out = []
+    for part in str(text or "").strip().lstrip("vV").split("."):
+        num = ""
+        for ch in part:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        out.append(int(num) if num else 0)
+    return tuple(out or [0])
+
+
+def version_newer(remote: str, local: str | None = None) -> bool:
+    """remote 是否比 local 新。"""
+    a = version_tuple(remote)
+    b = version_tuple(local or APP_VERSION)
+    n = max(len(a), len(b))
+    return a + (0,) * (n - len(a)) > b + (0,) * (n - len(b))
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 DEFAULT_SAVE_ROOT = os.path.join(os.path.expanduser("~"), "Pictures", APP_NAME)
 
@@ -21,8 +54,29 @@ DEFAULT_CONFIG = {
     "save_root": DEFAULT_SAVE_ROOT,
     "auto_start": True,            # 开机自启
     "auto_copy": True,             # 截图完成后自动复制到剪贴板
+    # 启动时是否弹出启动（主）面板：True=弹出；False=静默驻留托盘
+    # 主面板「取消启动提示」勾选框与设置页「启动时打开启动页面」读写同一项
+    "startup_show_panel": True,
     "trash_days": 3,               # 回收站保留天数
-    "column_capacity": 10,         # 历史库每列最多张数
+    "column_capacity": 7,         # 历史库每列最多张数
+    "record_fps": 30,             # 录制帧率：24 / 30 / 60 / 120
+    # OCR 引擎档位：auto=本机系统 OCR 优先（系统不可用才用已装组件包）
+    #              / winocr=强制系统 OCR / rapidocr=强制高精度组件包（需已下载）
+    "ocr_engine": "auto",
+    # ---------------- 翻译（识别窗下方「选择翻译 / 全部翻译」） ----------------
+    "translate_provider": "baidu",   # baidu / azure / deepl / libre / mymemory
+    "translate_target": "auto",      # auto=中文→英文、其它→中文；也可填 zh/en/ja/ko
+    # 留空则自动读取环境变量（translate_env_enabled=True 时）
+    "translate_env_enabled": True,
+    "translate_baidu_appid": "",
+    "translate_baidu_key": "",
+    "translate_baidu_apikey": "",      # API Key（Bearer 鉴权，选填；管理控制台→API Key 管理创建）
+    "translate_baidu_model": "llm",    # llm=大模型翻译（默认）/ nmt=机器翻译
+    "translate_baidu_reference": "",   # 翻译指令（仅 model=llm 生效，上限 500 字符）
+    "translate_azure_key": "",
+    "translate_azure_region": "",
+    "translate_deepl_key": "",
+    "translate_libre_url": "",
 }
 
 

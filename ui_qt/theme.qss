@@ -1,0 +1,271 @@
+/* ScreenSnap · SHUTTER 设计语言 · Qt 样式表模板
+ *
+ * 说明：
+ *   1) 大括号美元号包裹的 Token 占位由 ui_qt/theme.py 的 qss() 替换为实际色值，
+ *      Token 定义只维护 theme.py 一处；改色只改 theme.py。
+ *   2) 不对裸 QWidget 设置 background，避免破坏 WA_TranslucentBackground 的
+ *      无边框窗口（截图遮罩 / 贴图 / 圆角骨架窗）。
+ *   3) 尺寸单位：圆角与内边距用 px，字号用 pt，与 tk 版视觉对齐。
+ */
+
+QWidget {
+    color: ${INK};
+    font-family: "${FONT_FAMILY}";
+    font-size: 9pt;
+}
+
+QDialog, QMainWindow, QMenuBar, #Surface {
+    background: ${SURFACE};
+}
+
+/* ---------------- 文本层级 ---------------- */
+QLabel#Title {
+    color: ${INK};
+    font-size: 14pt;
+    font-weight: 600;
+}
+QLabel#Subtitle {
+    color: ${INK};
+    font-size: 10pt;
+}
+QLabel#Body {
+    color: ${INK_2};
+    font-size: 10pt;
+}
+QLabel#Caption {
+    color: ${INK_3};
+    font-size: 8pt;
+}
+QLabel#Danger {
+    color: ${DANGER};
+}
+
+/* ---------------- 按钮 ---------------- */
+QPushButton {
+    background: ${SURFACE};
+    color: ${INK};
+    border: 1px solid ${LINE};
+    border-radius: ${R_BTN}px;
+    padding: 5px 12px;
+    min-height: 16px;
+}
+QPushButton:hover {
+    background: ${SURFACE_3};
+}
+QPushButton:pressed {
+    background: ${SURFACE_2};
+}
+QPushButton:disabled {
+    color: ${INK_3};
+    background: ${SURFACE_2};
+    border-color: ${LINE};
+}
+
+QPushButton#Primary {
+    background: ${ACCENT};
+    color: #FFFFFF;
+    border: 1px solid ${ACCENT};
+    font-weight: 600;
+}
+QPushButton#Primary:hover {
+    background: ${ACCENT_HOVER};
+    border-color: ${ACCENT_HOVER};
+}
+
+QPushButton#Success {
+    background: ${SUCCESS};
+    color: #FFFFFF;
+    border: 1px solid ${SUCCESS};
+    font-weight: 600;
+}
+QPushButton#Success:hover {
+    background: ${SUCCESS_HOVER};
+    border-color: ${SUCCESS_HOVER};
+}
+
+QPushButton#Danger {
+    background: ${DANGER};
+    color: #FFFFFF;
+    border: 1px solid ${DANGER};
+    font-weight: 600;
+}
+QPushButton#Danger:hover {
+    background: ${DANGER_HOVER};
+    border-color: ${DANGER_HOVER};
+}
+
+QPushButton#Ghost {
+    background: transparent;
+    color: ${INK_2};
+    border: none;
+    padding: 4px 10px;
+}
+QPushButton#Ghost:hover {
+    background: ${SURFACE_3};
+    color: ${INK};
+}
+
+QPushButton#IconBtn {
+    background: transparent;
+    color: ${INK_3};
+    border: none;
+    border-radius: ${R_BTN}px;
+    padding: 0px;
+    font-size: 12pt;
+}
+QPushButton#IconBtn:hover {
+    background: ${DANGER};
+    color: #FFFFFF;
+}
+
+/* ---------------- 输入 ---------------- */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QKeySequenceEdit {
+    background: ${SURFACE};
+    color: ${INK};
+    border: 1px solid ${LINE};
+    border-radius: ${R_INPUT}px;
+    padding: 5px 8px;
+    selection-background-color: ${ACCENT_SOFT};
+    selection-color: ${INK};
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
+QDoubleSpinBox:focus, QKeySequenceEdit:focus {
+    border: 1px solid ${ACCENT};
+}
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {
+    background: ${SURFACE_2};
+    color: ${INK_3};
+}
+QComboBox::drop-down {
+    border: none;
+    width: 18px;
+}
+QComboBox QAbstractItemView {
+    background: ${SURFACE};
+    border: 1px solid ${LINE};
+    border-radius: ${R_BTN}px;
+    padding: 4px;
+    selection-background-color: ${ACCENT_SOFT};
+    selection-color: ${INK};
+    outline: none;
+}
+
+/* ---------------- 勾选 ---------------- */
+QCheckBox, QRadioButton {
+    spacing: 8px;
+    color: ${INK};
+}
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid ${LINE};
+    border-radius: 4px;
+    background: ${SURFACE};
+}
+QRadioButton::indicator {
+    border-radius: 8px;
+}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border-color: ${ACCENT};
+}
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+    background: ${ACCENT};
+    border-color: ${ACCENT};
+}
+
+/* ---------------- 菜单 ---------------- */
+QMenu {
+    background: ${SURFACE};
+    border: 1px solid ${LINE};
+    border-radius: ${R_BTN}px;
+    padding: 5px;
+}
+QMenu::item {
+    padding: 6px 26px 6px 12px;
+    border-radius: 6px;
+    color: ${INK};
+}
+QMenu::item:selected {
+    background: ${ACCENT_SOFT};
+    color: ${INK};
+}
+QMenu::item:disabled {
+    color: ${INK_3};
+}
+QMenu::separator {
+    height: 1px;
+    background: ${LINE};
+    margin: 5px 8px;
+}
+
+/* ---------------- 提示 ---------------- */
+QToolTip {
+    background: ${INK};
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 8pt;
+}
+
+/* ---------------- 滚动条 ---------------- */
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 0px;
+}
+QScrollBar::handle:vertical {
+    background: #C9CED6;
+    border-radius: 5px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover {
+    background: ${INK_3};
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 0px;
+}
+QScrollBar::handle:horizontal {
+    background: #C9CED6;
+    border-radius: 5px;
+    min-width: 24px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: ${INK_3};
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
+/* ---------------- 圆角卡片（骨架窗 / 后续面板共用） ---------------- */
+QFrame#ShellCard {
+    background: ${SURFACE};
+    border: 1px solid ${LINE};
+    border-radius: ${R_WIN}px;
+}
+QFrame#Panel {
+    background: ${SURFACE};
+    border: 1px solid ${LINE};
+    border-radius: ${R_CARD}px;
+}
+QFrame#Divider {
+    background: ${LINE};
+    border: none;
+    max-height: 1px;
+    min-height: 1px;
+}

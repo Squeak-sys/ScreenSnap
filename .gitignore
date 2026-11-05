@@ -1,7 +1,12 @@
 # PyInstaller
 build/
+build_qt/
 dist/
+dist_qt/
 *.spec.bak
+
+# 发布产物（安装包体积大，不入库）
+release/
 
 # Python
 __pycache__/
